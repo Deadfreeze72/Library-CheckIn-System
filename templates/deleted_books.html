@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Deleted Books{% endblock %}
+
+{% block content %}
+
+<div class="task-box">
+    <h2>Deleted Books</h2>
+    <p class="hint"><a href="{{ url_for('books') }}">&larr; Back to Catalog</a></p>
+
+    <div class="table-responsive">
+    <table>
+        <tr>
+            <th>Title</th>
+            <th>Author/Editor</th>
+            <th>Year</th>
+            <th>Accession No.</th>
+            <th>Deleted On</th>
+            <th></th>
+        </tr>
+        {% for book in books %}
+        <tr>
+            <td>{{ book.title }}</td>
+            <td>{{ book.author }}</td>
+            <td>{{ book.year }}</td>
+            <td>{{ book.accession_no }}</td>
+            <td>{{ book.date_deleted }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('restore_book', id=book.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="secondary-button">Restore</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No deleted books.</td></tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+{% endblock %}

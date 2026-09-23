@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{% endblock %} - St. John Bosco Library</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f8f7a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z'/%3E%3Cpath d='M12 4v15'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+{% if current_user.is_authenticated %}
+<nav>
+    <div class="brand">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z"/>
+            <path d="M12 4v15"/>
+        </svg>
+        <div class="brand-text">
+            <span class="brand-primary">St. John Bosco</span>
+            <span class="brand-secondary">College Library</span>
+        </div>
+    </div>
+    <div>
+        <a href="{{ url_for('dashboard') }}"><i data-lucide="layout-dashboard"></i> Dashboard</a>
+        <a href="/" target="_blank"><i data-lucide="globe"></i> View Public Site</a>
+        <a href="{{ url_for('books') }}"><i data-lucide="book-open"></i> Books</a>
+        <a href="{{ url_for('loans') }}"><i data-lucide="repeat"></i> Loans</a>
+        <a href="{{ url_for('reports') }}"><i data-lucide="bar-chart-3"></i> Reports</a>
+        <a href="{{ url_for('checkin') }}" target="_blank"><i data-lucide="user-check"></i> Check-Ins</a>
+        <a href="{{ url_for('logout') }}"><i data-lucide="log-out"></i> Logout</a>
+    </div>
+</nav>
+{% endif %}
+
+<div class="container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+</div>
+
+<script>lucide.createIcons();</script>
+
+</body>
+</html>

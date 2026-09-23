@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>St. John Bosco College of Education Library</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f8f7a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z'/%3E%3Cpath d='M12 4v15'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+{% include "public_nav.html" %}
+
+<div class="container">
+
+    <div class="hero">
+        <h1>Find a Book or Resource</h1>
+        <form method="GET" action="{{ url_for('catalogue') }}" class="hero-search">
+            <input type="text" name="search" placeholder="Search books, authors, ISBN...">
+            <button type="submit"><i data-lucide="search"></i></button>
+        </form>
+        <div class="hero-tabs">
+            <a href="{{ url_for('catalogue') }}?type=all" class="tab-link">All</a>
+            <a href="{{ url_for('catalogue') }}?type=books" class="tab-link">Books</a>
+            <a href="{{ url_for('coming_soon') }}?feature=E-Books" class="tab-link">E-books</a>
+            <a href="{{ url_for('coming_soon') }}?feature=Journals" class="tab-link">Journals</a>
+        </div>
+    </div>
+
+    <div class="task-box">
+        <h2><i data-lucide="grid-3x3" class="section-icon"></i>Quick Access</h2>
+        <div class="quick-access-grid">
+            <a href="{{ url_for('catalogue') }}" class="quick-tile"><i data-lucide="library"></i><span>Catalogue</span></a>
+            <a href="{{ url_for('coming_soon') }}?feature=E-Books" class="quick-tile"><i data-lucide="book-open"></i><span>E-Books</span></a>
+            <a href="{{ url_for('coming_soon') }}?feature=Journals" class="quick-tile"><i data-lucide="newspaper"></i><span>Journals</span></a>
+            <a href="{{ url_for('coming_soon') }}?feature=Research" class="quick-tile"><i data-lucide="graduation-cap"></i><span>Research</span></a>
+            <a href="{{ url_for('portal_login') }}" class="quick-tile"><i data-lucide="user"></i><span>My Account</span></a>
+            <a href="#hours" class="quick-tile"><i data-lucide="clock"></i><span>Opening Hours</span></a>
+        </div>
+    </div>
+
+    {% if featured %}
+    <div class="task-box">
+        <h2><i data-lucide="star" class="section-icon"></i>Featured Books</h2>
+        <div class="featured-grid">
+            {% for book in featured %}
+            <div class="featured-card">
+                <div class="featured-cover"><i data-lucide="book"></i></div>
+                <p class="featured-title">{{ book.title }}</p>
+                <p class="featured-author">{{ book.author }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="task-box">
+        <h2><i data-lucide="megaphone" class="section-icon"></i>Library News</h2>
+        {% for a in announcements %}
+        <div class="news-item">
+            <p class="news-title">{{ a.title }}</p>
+            <p class="news-date">{{ a.date }}</p>
+            {% if a.body %}<p class="news-body">{{ a.body }}</p>{% endif %}
+        </div>
+        {% else %}
+        <p class="hint">No news posted yet.</p>
+        {% endfor %}
+    </div>
+
+    <div class="task-box" id="hours">
+        <h2><i data-lucide="clock" class="section-icon"></i>Opening Hours</h2>
+        <p style="white-space: pre-line;">{{ settings.opening_hours }}</p>
+    </div>
+
+    <div class="task-box" id="contact">
+        <h2><i data-lucide="mail" class="section-icon"></i>Contact Library</h2>
+        {% if settings.contact_email %}<p>Email: {{ settings.contact_email }}</p>{% endif %}
+        {% if settings.contact_phone %}<p>Phone: {{ settings.contact_phone }}</p>{% endif %}
+        {% if settings.contact_address %}<p>Address: {{ settings.contact_address }}</p>{% endif %}
+    </div>
+
+</div>
+
+<script>lucide.createIcons();</script>
+
+</body>
+</html>

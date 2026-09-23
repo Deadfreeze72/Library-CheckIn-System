@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Login{% endblock %}
+
+{% block content %}
+
+<div class="auth-box">
+
+    <div class="auth-logo">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z"/>
+            <path d="M12 4v15"/>
+        </svg>
+        <span class="brand-primary">St. John Bosco College of Education</span>
+        <span class="brand-secondary">Library Management System</span>
+    </div>
+
+    <h2>Librarian Login</h2>
+
+    <form method="POST" autocomplete="off">
+
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Email Address</label>
+        <input type="email" name="email" placeholder="Enter your email" autocomplete="off" required>
+
+        <label>Password</label>
+        <input type="password" name="password" placeholder="Enter your password" autocomplete="new-password" required>
+
+        <button type="submit">Login</button>
+
+    </form>
+
+    <p>Don't have an account? <a href="{{ url_for('register') }}">Register here</a></p>
+    <p><a href="{{ url_for('portal_login') }}">Student? View your account &rarr;</a></p>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Loans{% endblock %}
+
+{% block content %}
+
+<div class="big-stat-box">
+    <h3>Books Loaned Out</h3>
+    <p class="big-stat">{{ loaned_count }}</p>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="book-plus" class="section-icon"></i>Loan Out a Book</h2>
+
+    {% if available_books|length == 0 %}
+    <p class="hint">No books are currently available to loan -- add books in the Books section first.</p>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('add_loan') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Date</label>
+        <input type="date" name="date">
+
+        <label>Name</label>
+        <input type="text" name="borrower_name" id="borrower_name" placeholder="Start typing a registered name..." list="student-names" autocomplete="off" required>
+        <datalist id="student-names">
+            {% for s in students %}
+            <option value="{{ s.name }}"></option>
+            {% endfor %}
+        </datalist>
+
+        <label>Level</label>
+        <select name="level" id="level" onchange="document.getElementById('level_other_wrap').style.display = this.value === 'Other' ? 'block' : 'none';">
+            <option value="100">100</option>
+            <option value="200">200</option>
+            <option value="300">300</option>
+            <option value="400">400</option>
+            <option value="Other">Other</option>
+        </select>
+
+        <div id="level_other_wrap" style="display:none;">
+            <label>Please specify</label>
+            <input type="text" name="level_other" placeholder="e.g. Staff, Postgraduate">
+        </div>
+
+        <label>Title of Book</label>
+        <select name="book_id" id="book_id" required onchange="updateCopyHint();">
+            <option value="" disabled selected>Select a book</option>
+            {% for book, remaining in available_books %}
+            <option value="{{ book.id }}" data-copies="{{ book.copies }}">{{ book.title }}{% if book.author %} -- {{ book.author }}{% endif %} ({{ remaining }} available)</option>
+            {% endfor %}
+        </select>
+
+        <label>Copy Number</label>
+        <input type="number" name="copy_number" id="copy_number" min="1" placeholder="e.g. 2">
+        <p class="hint" id="copy_hint">Select a book above to see how many copies exist.</p>
+
+        <label>ID / Contact</label>
+        <input type="text" name="contact" id="contact" placeholder="Student ID, phone, or email">
+
+        <p class="hint">Due date is set automatically: 2 weeks for Levels 100-400, 30 days for Other.</p>
+
+        <button type="submit">Loan Out Book</button>
+    </form>
+</div>
+
+<script>
+    const knownStudents = {{ students_json|safe }};
+
+    document.getElementById('borrower_name').addEventListener('input', function () {
+        const typed = this.value.trim().toLowerCase();
+        const match = knownStudents.find(s => s.name.toLowerCase() === typed);
+
+        if (match) {
+            document.getElementById('level').value = match.level;
+            document.getElementById('contact').value = match.student_id;
+            document.getElementById('level_other_wrap').style.display = 'none';
+        }
+    });
+
+    function updateCopyHint() {
+        const select = document.getElementById('book_id');
+        const selected = select.options[select.selectedIndex];
+        const copyInput = document.getElementById('copy_number');
+        const hint = document.getElementById('copy_hint');
+        const totalCopies = selected ? selected.getAttribute('data-copies') : null;
+
+        if (totalCopies) {
+            copyInput.setAttribute('max', totalCopies);
+            hint.textContent = `This book has ${totalCopies} cop${totalCopies == 1 ? 'y' : 'ies'} -- enter a number from 1 to ${totalCopies}.`;
+        } else {
+            copyInput.removeAttribute('max');
+            hint.textContent = 'Select a book above to see how many copies exist.';
+        }
+    }
+</script>
+
+<div class="task-box">
+    <h2><i data-lucide="repeat" class="section-icon"></i>Active Loans</h2>
+
+    <div class="table-responsive">
+    <table>
+        <tr>
+            <th>Date</th>
+            <th>Name</th>
+            <th>Level</th>
+            <th>Copy #</th>
+            <th>Title</th>
+            <th>Contact</th>
+            <th>Due Date</th>
+            <th>Renewed</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+        {% for loan in loans %}
+        <tr>
+            <td>{{ loan.date }}</td>
+            <td>{{ loan.borrower_name }}</td>
+            <td>{{ loan.level_other if loan.level == "Other" else loan.level }}</td>
+            <td>{{ loan.copy_number }}</td>
+            <td>{{ loan.book.title }}</td>
+            <td>{{ loan.contact }}</td>
+            <td>{{ loan.due_date }}</td>
+            <td>{{ loan.renewal_date or "--" }}</td>
+            <td>
+                {% if loan.due_date < today %}
+                <span class="status overdue">Overdue</span>
+                {% else %}
+                <span class="status ontime">On Time</span>
+                {% endif %}
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('return_loan', id=loan.id) }}" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="remarks" placeholder="Return remarks (optional)">
+                    <button type="submit" class="icon-btn"><i data-lucide="check"></i>Mark Returned</button>
+                </form>
+                <form method="POST" action="{{ url_for('renew_loan', id=loan.id) }}" class="inline-form" onsubmit="return confirm('Renew this loan?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <select name="duration">
+                        <option value="14">2 weeks</option>
+                        <option value="30">30 days</option>
+                    </select>
+                    <button type="submit" class="secondary-button icon-btn"><i data-lucide="rotate-cw"></i>Renew</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="10"><div class="empty-state"><i data-lucide="inbox"></i>No active loans right now.</div></td></tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="check-circle" class="section-icon"></i>Recently Returned</h2>
+
+    <div class="table-responsive">
+    <table>
+        <tr>
+            <th>Title</th>
+            <th>Name</th>
+            <th>Returned On</th>
+            <th>Remarks</th>
+        </tr>
+        {% for loan in returned_loans %}
+        <tr>
+            <td>{{ loan.book.title }}</td>
+            <td>{{ loan.borrower_name }}</td>
+            <td>{{ loan.date_returned }}</td>
+            <td>{{ loan.remarks or "--" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4"><div class="empty-state"><i data-lucide="archive"></i>No returns recorded yet.</div></td></tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+{% endblock %}

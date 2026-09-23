@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check In - St. John Bosco Library</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f8f7a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z'/%3E%3Cpath d='M12 4v15'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<div class="kiosk-container">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert {{ category }} kiosk-alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="kiosk-box">
+
+        <div class="auth-logo">
+            <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z"/>
+                <path d="M12 4v15"/>
+            </svg>
+            <span class="brand-primary">St. John Bosco College of Education</span>
+            <span class="brand-secondary">Library</span>
+        </div>
+
+        <h1>Welcome</h1>
+        <p class="hint">Enter your Student ID or full name to check in.</p>
+
+        <form method="POST" action="{{ url_for('checkin') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <input type="text" name="identifier" placeholder="Student ID or Name" list="kiosk-suggestions" autocomplete="off" autofocus required>
+            <datalist id="kiosk-suggestions">
+                {% for s in students %}
+                <option value="{{ s.name }}"></option>
+                <option value="{{ s.student_id }}"></option>
+                {% endfor %}
+            </datalist>
+
+            <button type="submit">Check In</button>
+        </form>
+
+        <p class="hint" style="margin-top:16px;"><a href="{{ url_for('portal_login') }}">View my borrowed books &rarr;</a></p>
+    </div>
+
+</div>
+
+</body>
+</html>

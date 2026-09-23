@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Reports{% endblock %}
+
+{% block content %}
+
+<div class="dashboard-header">
+    <h1>Reports</h1>
+    <p><a href="{{ url_for('export_loans') }}">Export all loans as CSV &rarr;</a></p>
+</div>
+
+<div class="stats-cards">
+    <div class="card"><i data-lucide="library" class="card-icon"></i><h3>Book Titles</h3><p>{{ total_book_titles }}</p></div>
+    <div class="card"><i data-lucide="users" class="card-icon"></i><h3>Students</h3><p>{{ total_students }}</p></div>
+    <div class="card"><i data-lucide="repeat" class="card-icon"></i><h3>Total Borrowings</h3><p>{{ total_borrowings }}</p></div>
+    <div class="card"><i data-lucide="check-circle" class="card-icon"></i><h3>Total Returns</h3><p>{{ total_returns }}</p></div>
+    <div class="card"><i data-lucide="alert-triangle" class="card-icon"></i><h3>Currently Overdue</h3><p>{{ currently_overdue }}</p></div>
+    <div class="card"><i data-lucide="user-check" class="card-icon"></i><h3>Total Check-Ins</h3><p>{{ total_checkins }}</p></div>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="trending-up" class="section-icon"></i>Most Borrowed Books</h2>
+
+    {% for book, count in most_borrowed %}
+    <div class="bar-row">
+        <span class="bar-label">{{ book.title }}</span>
+        <div class="bar-track">
+            <div class="bar-fill" data-pct="{{ (count / max_borrow_count * 100)|round }}"></div>
+        </div>
+        <span class="bar-count">{{ count }}</span>
+    </div>
+    {% else %}
+    <p class="hint">No borrowing activity yet.</p>
+    {% endfor %}
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="calendar-days" class="section-icon"></i>Busiest Check-In Days</h2>
+
+    {% for day, count in busiest_days %}
+    <div class="bar-row">
+        <span class="bar-label">{{ day }}</span>
+        <div class="bar-track">
+            <div class="bar-fill" data-pct="{{ (count / max_day_count * 100)|round }}"></div>
+        </div>
+        <span class="bar-count">{{ count }}</span>
+    </div>
+    {% else %}
+    <p class="hint">No check-in activity yet.</p>
+    {% endfor %}
+</div>
+
+<script>
+    document.querySelectorAll('.bar-fill').forEach(function (el) {
+        el.style.width = el.getAttribute('data-pct') + '%';
+    });
+</script>
+
+{% endblock %}

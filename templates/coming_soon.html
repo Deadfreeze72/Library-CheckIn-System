@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coming Soon - St. John Bosco Library</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f8f7a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z'/%3E%3Cpath d='M12 4v15'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+{% include "public_nav.html" %}
+
+<div class="container">
+    <div class="task-box" style="text-align:center; padding:60px 30px;">
+        <i data-lucide="construction" style="width:40px;height:40px;color:var(--accent);margin-bottom:14px;"></i>
+        <h2 style="margin-bottom:10px;">{{ feature }} is coming soon</h2>
+        <p class="hint">This section is planned for a future update. Check back later, or return to the homepage.</p>
+        <p style="margin-top:20px;"><a href="/">&larr; Back to Home</a></p>
+    </div>
+</div>
+
+<script>lucide.createIcons();</script>
+
+</body>
+</html>

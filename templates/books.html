@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Books{% endblock %}
+
+{% block content %}
+
+<div class="big-stat-box">
+    <h3>Books Available</h3>
+    <p class="big-stat">{{ available_count }} / {{ total_copies }}</p>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="plus-circle" class="section-icon"></i>Add Book</h2>
+
+    <form method="POST" action="{{ url_for('add_book') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Date</label>
+        <input type="date" name="date">
+
+        <label>Title</label>
+        <input type="text" name="title" placeholder="Book title" required>
+
+        <label>Author/Editor</label>
+        <input type="text" name="author" placeholder="Author or editor name">
+
+        <label>Year</label>
+        <input type="number" name="year" placeholder="e.g. 2024" min="1900" max="2100">
+
+        <label>ISBN</label>
+        <input type="text" name="isbn" placeholder="ISBN">
+
+        <label>Accession No.</label>
+        <input type="text" name="accession_no" placeholder="Library accession number">
+
+        <label>Copies</label>
+        <input type="number" name="copies" min="1" value="1" required>
+
+        <label>Purchased / Donated</label>
+        <select name="acquisition_type" id="acquisition_type" onchange="document.getElementById('acquisition_other_wrap').style.display = this.value === 'Other' ? 'block' : 'none';">
+            <option value="Purchased">Purchased</option>
+            <option value="Donated">Donated</option>
+            <option value="Other">Other</option>
+        </select>
+
+        <div id="acquisition_other_wrap" style="display:none;">
+            <label>Please specify</label>
+            <input type="text" name="acquisition_other" placeholder="Specify source">
+        </div>
+
+        <label>Remarks</label>
+        <textarea name="remarks" rows="3" placeholder="Any additional notes"></textarea>
+
+        <button type="submit">Add Book</button>
+    </form>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="search" class="section-icon"></i>Search Catalog</h2>
+
+    <form method="GET" action="{{ url_for('books') }}">
+        <input type="text" name="search" placeholder="Search by title or author..." value="{{ search if search else '' }}">
+        <button type="submit">Search</button>
+    </form>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="library" class="section-icon"></i>Catalog</h2>
+    <p class="hint"><a href="{{ url_for('deleted_books') }}">View Deleted Books &rarr;</a></p>
+
+    <div class="table-responsive">
+    <table>
+        <tr>
+            <th>Date</th>
+            <th>Title</th>
+            <th>Author/Editor</th>
+            <th>Year</th>
+            <th>ISBN</th>
+            <th>Accession No.</th>
+            <th>Available</th>
+            <th>Source</th>
+            <th>Remarks</th>
+            <th>Featured</th>
+            <th></th>
+        </tr>
+        {% for book in books %}
+        <tr>
+            <td>{{ book.date }}</td>
+            <td>{{ book.title }}</td>
+            <td>{{ book.author }}</td>
+            <td>{{ book.year }}</td>
+            <td>{{ book.isbn }}</td>
+            <td>{{ book.accession_no }}</td>
+            <td>{{ available_map.get(book.id, 0) }} / {{ book.copies }}</td>
+            <td>{{ book.acquisition_other if book.acquisition_type == "Other" else book.acquisition_type }}</td>
+            <td>{{ book.remarks }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('toggle_featured', id=book.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="link-button icon-btn">
+                        <i data-lucide="{{ 'star' if book.featured else 'star-off' }}"></i>{{ 'Featured' if book.featured else 'Feature' }}
+                    </button>
+                </form>
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('delete_book', id=book.id) }}" onsubmit="return confirm('Delete this book?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="link-button icon-btn"><i data-lucide="trash-2"></i>Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="11"><div class="empty-state"><i data-lucide="book-x"></i>No books in catalog yet.</div></td></tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+{% endblock %}

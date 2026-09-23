@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catalogue - St. John Bosco Library</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f8f7a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z'/%3E%3Cpath d='M12 4v15'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+{% include "public_nav.html" %}
+
+<div class="container">
+
+    <div class="dashboard-header">
+        <h1>Catalogue</h1>
+    </div>
+
+    <div class="task-box">
+        <form method="GET" action="{{ url_for('catalogue') }}">
+            <input type="text" name="search" placeholder="Search books, authors, ISBN..." value="{{ search }}">
+            <input type="hidden" name="type" value="{{ resource_type }}">
+            <button type="submit">Search</button>
+        </form>
+        <div class="hero-tabs" style="margin-top:12px;">
+            <a href="{{ url_for('catalogue') }}?type=all&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'all' }}">All</a>
+            <a href="{{ url_for('catalogue') }}?type=books&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'books' }}">Books</a>
+            <a href="{{ url_for('coming_soon') }}?feature=E-Books" class="tab-link">E-books</a>
+            <a href="{{ url_for('coming_soon') }}?feature=Journals" class="tab-link">Journals</a>
+        </div>
+    </div>
+
+    <div class="task-box">
+        <div class="table-responsive">
+        <table>
+            <tr>
+                <th>Title</th>
+                <th>Author/Editor</th>
+                <th>Year</th>
+                <th>Available</th>
+            </tr>
+            {% for book in results %}
+            <tr>
+                <td>{{ book.title }}</td>
+                <td>{{ book.author }}</td>
+                <td>{{ book.year }}</td>
+                <td>
+                    {% if available_map.get(book.id, 0) > 0 %}
+                    <span class="status ontime">{{ available_map.get(book.id, 0) }} available</span>
+                    {% else %}
+                    <span class="status overdue">On Loan</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4"><div class="empty-state"><i data-lucide="search-x"></i>No results found.</div></td></tr>
+            {% endfor %}
+        </table>
+        </div>
+    </div>
+
+</div>
+
+<script>lucide.createIcons();</script>
+
+</body>
+</html>
