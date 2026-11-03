@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, flash, url_for, session, Response
+from flask import Flask, render_template, request, redirect, flash, url_for, session, Response, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager,
@@ -12,6 +12,8 @@ from flask_wtf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
@@ -31,6 +33,16 @@ app.config["SQLALCHEMY_DATABASE_URI"] = (
     or "sqlite:///" + os.path.join(basedir, "library.db")
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+UPLOAD_FOLDER = os.path.join(basedir, "static", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "epub", "txt"}
+
+UPLOAD_FOLDER = os.path.join(basedir, "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "txt"}
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
@@ -91,6 +103,7 @@ class Loan(db.Model):
     level_other = db.Column(db.String(100))
     copy_number = db.Column(db.String(50))
     book_id = db.Column(db.Integer, db.ForeignKey("book.id"), nullable=False)
+    borrower_id = db.Column(db.String(100))
     contact = db.Column(db.String(150))
     due_date = db.Column(db.String(50))
     renewal_date = db.Column(db.String(50))
@@ -253,13 +266,12 @@ def student_portal():
     today = datetime.now().strftime("%Y-%m-%d")
     soon_cutoff = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
 
-    # Loans are matched by borrower_name/contact since Loan isn't tied to
-    # Student by foreign key (borrowing supports non-registered borrowers
-    # too) -- match on this student's ID showing up in the contact field,
-    # which is how the loan form auto-fills it during checkout.
+    # Loans aren't tied to Student by foreign key (borrowing supports
+    # non-registered borrowers too), so match on the Student ID recorded
+    # on the loan, which the loan form auto-fills during checkout.
     active_loans = Loan.query.filter(
         Loan.date_returned.is_(None),
-        Loan.contact == student.student_id
+        Loan.borrower_id == student.student_id
     ).order_by(Loan.due_date).all()
 
     borrowed_count = len(active_loans)
@@ -289,7 +301,7 @@ def student_portal_history():
         return redirect("/portal/login")
 
     all_loans = Loan.query.filter(
-        Loan.contact == student.student_id
+        Loan.borrower_id == student.student_id
     ).order_by(Loan.date.desc()).all()
 
     today = datetime.now().strftime("%Y-%m-%d")
@@ -316,6 +328,19 @@ class LibrarySettings(db.Model):
     contact_email = db.Column(db.String(150), default="library@sjbc.edu.gh")
     contact_phone = db.Column(db.String(50), default="")
     contact_address = db.Column(db.String(250), default="")
+
+
+class DigitalResource(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    author = db.Column(db.String(150))
+    resource_type = db.Column(db.String(20))  # E-Book / Journal / Staff Publication
+    year = db.Column(db.String(10))
+    description = db.Column(db.Text)
+    access_type = db.Column(db.String(10))  # file / link
+    file_path = db.Column(db.String(300))
+    external_url = db.Column(db.String(500))
+    date_added = db.Column(db.String(50), default=lambda: datetime.now().strftime("%Y-%m-%d"))
 
 
 def get_settings():
@@ -372,6 +397,117 @@ def catalogue():
 def coming_soon():
     feature = request.args.get("feature", "This feature")
     return render_template("coming_soon.html", feature=feature)
+
+
+# =========================
+# DIGITAL RESOURCES (E-Books / Journals / Staff Publications)
+# =========================
+@app.route("/resources")
+def resources():
+    search = request.args.get("search", "").strip()
+    resource_type = request.args.get("type", "all")
+
+    query = DigitalResource.query
+    if resource_type != "all":
+        query = query.filter_by(resource_type=resource_type)
+    if search:
+        like = f"%{search}%"
+        query = query.filter((DigitalResource.title.ilike(like)) | (DigitalResource.author.ilike(like)))
+
+    items = query.order_by(DigitalResource.date_added.desc()).all()
+
+    return render_template("resources.html", items=items, search=search, resource_type=resource_type)
+
+
+@app.route("/resources/<int:id>/file")
+def resource_file(id):
+    from flask import send_from_directory
+    item = DigitalResource.query.get_or_404(id)
+    if item.access_type != "file" or not item.file_path:
+        flash("No file available for this resource.", "danger")
+        return redirect("/resources")
+    return send_from_directory(app.config["UPLOAD_FOLDER"], item.file_path, as_attachment=False)
+
+
+@app.route("/resources/admin")
+@login_required
+def resources_admin():
+    items = DigitalResource.query.order_by(DigitalResource.date_added.desc()).all()
+    return render_template("resources_admin.html", items=items)
+
+
+@app.route("/resources/add", methods=["POST"])
+@login_required
+def add_resource():
+    title = request.form.get("title", "").strip()
+    author = request.form.get("author", "").strip()
+    resource_type = request.form.get("resource_type", "").strip()
+    year = request.form.get("year", "").strip()
+    description = request.form.get("description", "").strip()
+    access_type = request.form.get("access_type", "link").strip()
+    external_url = request.form.get("external_url", "").strip()
+
+    if not title:
+        flash("Title is required.", "danger")
+        return redirect("/resources/admin")
+
+    if resource_type not in {"E-Book", "Journal", "Staff Publication"}:
+        resource_type = "E-Book"
+
+    file_path = None
+
+    if access_type == "file":
+        uploaded = request.files.get("resource_file")
+        if not uploaded or uploaded.filename == "":
+            flash("Please choose a file to upload.", "danger")
+            return redirect("/resources/admin")
+
+        ext = uploaded.filename.rsplit(".", 1)[-1].lower() if "." in uploaded.filename else ""
+        if ext not in ALLOWED_EXTENSIONS:
+            flash(f"File type not allowed. Use one of: {', '.join(sorted(ALLOWED_EXTENSIONS))}", "danger")
+            return redirect("/resources/admin")
+
+        safe_name = secure_filename(uploaded.filename)
+        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe_name}"
+        uploaded.save(os.path.join(app.config["UPLOAD_FOLDER"], unique_name))
+        file_path = unique_name
+    else:
+        access_type = "link"
+        if not external_url:
+            flash("Please provide a link.", "danger")
+            return redirect("/resources/admin")
+
+    resource = DigitalResource(
+        title=title,
+        author=author,
+        resource_type=resource_type,
+        year=year,
+        description=description,
+        access_type=access_type,
+        file_path=file_path,
+        external_url=external_url if access_type == "link" else None
+    )
+    db.session.add(resource)
+    db.session.commit()
+
+    flash(f"'{title}' added to {resource_type}s.", "success")
+    return redirect("/resources/admin")
+
+
+@app.route("/resources/<int:id>/delete", methods=["POST"])
+@login_required
+def delete_resource(id):
+    item = DigitalResource.query.get_or_404(id)
+
+    if item.access_type == "file" and item.file_path:
+        file_full_path = os.path.join(app.config["UPLOAD_FOLDER"], item.file_path)
+        if os.path.exists(file_full_path):
+            os.remove(file_full_path)
+
+    db.session.delete(item)
+    db.session.commit()
+    flash(f"'{item.title}' removed.", "success")
+    return redirect("/resources/admin")
 
 
 @app.route("/announcements/add", methods=["POST"])
@@ -736,13 +872,13 @@ def export_loans():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
-        "Date", "Borrower", "Level", "Book", "Copy #", "Contact",
+        "Date", "Borrower", "Student ID", "Level", "Book", "Copy #", "Contact",
         "Due Date", "Renewed", "Returned", "Remarks"
     ])
 
     for loan in loans:
         writer.writerow([
-            loan.date, loan.borrower_name,
+            loan.date, loan.borrower_name, loan.borrower_id or "",
             loan.level_other if loan.level == "Other" else loan.level,
             loan.book.title if loan.book else "", loan.copy_number, loan.contact,
             loan.due_date, loan.renewal_date or "", loan.date_returned or "", loan.remarks or ""
@@ -806,6 +942,7 @@ def add_loan():
     level_other = request.form.get("level_other", "").strip()
     copy_number = request.form.get("copy_number", "").strip()
     book_id = request.form.get("book_id", "")
+    borrower_id = request.form.get("borrower_id", "").strip()
     contact = request.form.get("contact", "").strip()
 
     if not borrower_name or not book_id:
@@ -861,6 +998,7 @@ def add_loan():
         level_other=level_other if level == "Other" else "",
         copy_number=copy_number,
         book_id=book.id,
+        borrower_id=borrower_id,
         contact=contact,
         due_date=due_date
     )

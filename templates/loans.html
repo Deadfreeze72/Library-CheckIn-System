@@ -56,8 +56,11 @@
         <input type="number" name="copy_number" id="copy_number" min="1" placeholder="e.g. 2">
         <p class="hint" id="copy_hint">Select a book above to see how many copies exist.</p>
 
-        <label>ID / Contact</label>
-        <input type="text" name="contact" id="contact" placeholder="Student ID, phone, or email">
+        <label>Student ID</label>
+        <input type="text" name="borrower_id" id="borrower_id" placeholder="Student ID (auto-fills for registered students)">
+
+        <label>Contact</label>
+        <input type="text" name="contact" id="contact" placeholder="Phone number or email">
 
         <p class="hint">Due date is set automatically: 2 weeks for Levels 100-400, 30 days for Other.</p>
 
@@ -74,7 +77,7 @@
 
         if (match) {
             document.getElementById('level').value = match.level;
-            document.getElementById('contact').value = match.student_id;
+            document.getElementById('borrower_id').value = match.student_id;
             document.getElementById('level_other_wrap').style.display = 'none';
         }
     });
@@ -107,6 +110,7 @@
             <th>Level</th>
             <th>Copy #</th>
             <th>Title</th>
+            <th>Student ID</th>
             <th>Contact</th>
             <th>Due Date</th>
             <th>Renewed</th>
@@ -120,6 +124,7 @@
             <td>{{ loan.level_other if loan.level == "Other" else loan.level }}</td>
             <td>{{ loan.copy_number }}</td>
             <td>{{ loan.book.title }}</td>
+            <td>{{ loan.borrower_id }}</td>
             <td>{{ loan.contact }}</td>
             <td>{{ loan.due_date }}</td>
             <td>{{ loan.renewal_date or "--" }}</td>
@@ -147,7 +152,7 @@
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="10"><div class="empty-state"><i data-lucide="inbox"></i>No active loans right now.</div></td></tr>
+        <tr><td colspan="11"><div class="empty-state"><i data-lucide="inbox"></i>No active loans right now.</div></td></tr>
         {% endfor %}
     </table>
     </div>

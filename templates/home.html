@@ -23,8 +23,8 @@
         <div class="hero-tabs">
             <a href="{{ url_for('catalogue') }}?type=all" class="tab-link">All</a>
             <a href="{{ url_for('catalogue') }}?type=books" class="tab-link">Books</a>
-            <a href="{{ url_for('coming_soon') }}?feature=E-Books" class="tab-link">E-books</a>
-            <a href="{{ url_for('coming_soon') }}?feature=Journals" class="tab-link">Journals</a>
+            <a href="{{ url_for('resources') }}?type=E-Book" class="tab-link">E-books</a>
+            <a href="{{ url_for('resources') }}?type=Journal" class="tab-link">Journals</a>
         </div>
     </div>
 
@@ -32,10 +32,10 @@
         <h2><i data-lucide="grid-3x3" class="section-icon"></i>Quick Access</h2>
         <div class="quick-access-grid">
             <a href="{{ url_for('catalogue') }}" class="quick-tile"><i data-lucide="library"></i><span>Catalogue</span></a>
-            <a href="{{ url_for('coming_soon') }}?feature=E-Books" class="quick-tile"><i data-lucide="book-open"></i><span>E-Books</span></a>
-            <a href="{{ url_for('coming_soon') }}?feature=Journals" class="quick-tile"><i data-lucide="newspaper"></i><span>Journals</span></a>
-            <a href="{{ url_for('coming_soon') }}?feature=Research" class="quick-tile"><i data-lucide="graduation-cap"></i><span>Research</span></a>
-            <a href="{{ url_for('portal_login') }}" class="quick-tile"><i data-lucide="user"></i><span>My Account</span></a>
+            <a href="{{ url_for('resources') }}?type=E-Book" class="quick-tile"><i data-lucide="book-open"></i><span>E-Books</span></a>
+            <a href="{{ url_for('resources') }}?type=Journal" class="quick-tile"><i data-lucide="newspaper"></i><span>Journals</span></a>
+            <a href="{{ url_for('resources') }}?type=Staff%20Publication" class="quick-tile"><i data-lucide="graduation-cap"></i><span>Staff Publications</span></a>
+            <a href="{{ url_for('portal_login') }}" class="quick-tile"><i data-lucide="user"></i><span>My Student Account</span></a>
             <a href="#hours" class="quick-tile"><i data-lucide="clock"></i><span>Opening Hours</span></a>
         </div>
     </div>

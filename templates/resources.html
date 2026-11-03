@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>E-Resources - St. John Bosco Library</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f8f7a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 4.5C2 4.5 4.5 3 8 3c2.2 0 4 1 4 1s1.8-1 4-1c3.5 0 6 1.5 6 1.5v14c0 0-2.5-1.5-6-1.5-2.2 0-4 1-4 1s-1.8-1-4-1c-3.5 0-6 1.5-6 1.5v-14z'/%3E%3Cpath d='M12 4v15'/%3E%3C/svg%3E">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+{% include "public_nav.html" %}
+
+<div class="container">
+
+    <div class="dashboard-header">
+        <h1>E-Resources</h1>
+    </div>
+
+    <div class="task-box">
+        <form method="GET" action="{{ url_for('resources') }}">
+            <input type="text" name="search" placeholder="Search title or author..." value="{{ search }}">
+            <input type="hidden" name="type" value="{{ resource_type }}">
+            <button type="submit">Search</button>
+        </form>
+        <div class="hero-tabs" style="margin-top:12px;">
+            <a href="{{ url_for('resources') }}?type=all&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'all' }}">All</a>
+            <a href="{{ url_for('resources') }}?type=E-Book&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'E-Book' }}">E-Books</a>
+            <a href="{{ url_for('resources') }}?type=Journal&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'Journal' }}">Journals</a>
+            <a href="{{ url_for('resources') }}?type=Staff%20Publication&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'Staff Publication' }}">Staff Publications</a>
+        </div>
+    </div>
+
+    <div class="task-box">
+        {% for item in items %}
+        <div class="resource-item">
+            <div class="resource-icon"><i data-lucide="{{ 'book-open' if item.resource_type == 'E-Book' else 'newspaper' if item.resource_type == 'Journal' else 'graduation-cap' }}"></i></div>
+            <div class="resource-info">
+                <p class="resource-title">{{ item.title }}</p>
+                <p class="resource-meta">{{ item.author }}{% if item.year %} &middot; {{ item.year }}{% endif %} &middot; {{ item.resource_type }}</p>
+                {% if item.description %}<p class="resource-desc">{{ item.description }}</p>{% endif %}
+            </div>
+            <div>
+                {% if item.access_type == "file" %}
+                <a href="{{ url_for('resource_file', id=item.id) }}" target="_blank" class="secondary-button icon-btn"><i data-lucide="download"></i>View File</a>
+                {% else %}
+                <a href="{{ item.external_url }}" target="_blank" rel="noopener" class="secondary-button icon-btn"><i data-lucide="external-link"></i>Open Link</a>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state"><i data-lucide="folder-open"></i>No resources found.</div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<script>lucide.createIcons();</script>
+
+</body>
+</html>
