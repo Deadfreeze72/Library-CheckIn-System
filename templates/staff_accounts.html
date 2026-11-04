@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Staff Accounts{% endblock %}
+
+{% block content %}
+
+<div class="task-box">
+    <h2><i data-lucide="user-plus" class="section-icon"></i>Create a Staff Account</h2>
+    <p class="hint">Staff can log in and submit e-books, journals and staff publications. Nothing they submit goes public until you approve it. Give them the temporary password and ask them to change it after their first login.</p>
+
+    <form method="POST" action="{{ url_for('add_staff_account') }}" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Full Name</label>
+        <input type="text" name="name" placeholder="Staff member's name" required>
+
+        <label>Email Address</label>
+        <input type="email" name="email" placeholder="staff@example.com" required>
+
+        <label>Temporary Password (at least 8 characters)</label>
+        <input type="text" name="password" autocomplete="off" required>
+
+        <button type="submit">Create Staff Account</button>
+    </form>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="users" class="section-icon"></i>Staff Accounts</h2>
+
+    <div class="table-responsive">
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th></th>
+        </tr>
+        {% for s in staff %}
+        <tr>
+            <td>{{ s.name }}</td>
+            <td>{{ s.email }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('delete_staff_account', id=s.id) }}" onsubmit="return confirm('Remove this staff account? Their submissions stay in the system.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="link-button icon-btn"><i data-lucide="trash-2"></i>Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3"><div class="empty-state"><i data-lucide="users"></i>No staff accounts yet.</div></td></tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+{% endblock %}

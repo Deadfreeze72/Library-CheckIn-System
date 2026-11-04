@@ -15,7 +15,7 @@
         <span class="brand-secondary">Library Management System</span>
     </div>
 
-    <h2>Librarian Login</h2>
+    <h2>Librarian &amp; Staff Login</h2>
 
     <form method="POST" autocomplete="off">
 
@@ -31,7 +31,12 @@
 
     </form>
 
-    <p>Don't have an account? <a href="{{ url_for('register') }}">Register here</a></p>
+    {% if registration_open %}
+    <p>First time setting up? <a href="{{ url_for('register') }}">Create the librarian account</a></p>
+    {% else %}
+    <p class="hint" style="text-align:center;">Staff accounts are created by the librarian.</p>
+    {% endif %}
+    <p><a href="{{ url_for('checkin') }}">Go to student check-in &rarr;</a></p>
     <p><a href="{{ url_for('portal_login') }}">Student? View your account &rarr;</a></p>
 
 </div>

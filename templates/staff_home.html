@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}My Submissions{% endblock %}
+
+{% block content %}
+
+<div class="dashboard-header">
+    <h1>Welcome, {{ current_user.name }}</h1>
+    <p>Add your own e-books, journals or staff publications. The librarian reviews each one before it appears on the public site.</p>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="upload-cloud" class="section-icon"></i>Submit a Resource</h2>
+
+    <form method="POST" action="{{ url_for('staff_add_resource') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Title</label>
+        <input type="text" name="title" placeholder="Title of the work" required>
+
+        <label>Author(s)</label>
+        <input type="text" name="author" placeholder="Author or authors">
+
+        <label>Type</label>
+        <select name="resource_type">
+            <option value="Staff Publication" selected>Staff Publication</option>
+            <option value="Journal">Journal</option>
+            <option value="E-Book">E-Book</option>
+        </select>
+
+        <label>Year</label>
+        <input type="number" name="year" placeholder="e.g. 2024" min="1900" max="2100">
+
+        <label>Description</label>
+        <textarea name="description" rows="3" placeholder="A short summary (optional)"></textarea>
+
+        <label>How can readers access it?</label>
+        <select name="access_type" id="access_type" onchange="document.getElementById('file_wrap').style.display = this.value === 'file' ? 'block' : 'none'; document.getElementById('link_wrap').style.display = this.value === 'link' ? 'block' : 'none';">
+            <option value="link">External Link</option>
+            <option value="file">Upload File</option>
+        </select>
+
+        <div id="link_wrap">
+            <label>Link URL</label>
+            <input type="text" name="external_url" placeholder="https://...">
+        </div>
+
+        <div id="file_wrap" style="display:none;">
+            <label>File (PDF, DOC, PPT, EPUB or TXT, up to 25 MB)</label>
+            <input type="file" name="resource_file">
+        </div>
+
+        <button type="submit">Submit for Review</button>
+    </form>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="library" class="section-icon"></i>My Submissions</h2>
+
+    <div class="table-responsive">
+    <table>
+        <tr>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Year</th>
+            <th>Status</th>
+            <th></th>
+        </tr>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.title }}</td>
+            <td>{{ item.resource_type }}</td>
+            <td>{{ item.year }}</td>
+            <td>
+                {% if item.status == 'pending' %}
+                <span class="status pending">Pending review</span>
+                {% else %}
+                <span class="status ontime">Published</span>
+                {% endif %}
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('staff_delete_resource', id=item.id) }}" onsubmit="return confirm('Remove this submission?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="link-button icon-btn"><i data-lucide="trash-2"></i>Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5"><div class="empty-state"><i data-lucide="folder-open"></i>You haven't submitted anything yet.</div></td></tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="key-round" class="section-icon"></i>Change Password</h2>
+    <p class="hint">If the librarian gave you a temporary password, please change it here.</p>
+
+    <form method="POST" action="{{ url_for('change_password') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Current Password</label>
+        <input type="password" name="current_password" autocomplete="current-password" required>
+
+        <label>New Password</label>
+        <input type="password" name="new_password" autocomplete="new-password" required>
+
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" autocomplete="new-password" required>
+
+        <button type="submit">Update Password</button>
+    </form>
+</div>
+
+{% endblock %}

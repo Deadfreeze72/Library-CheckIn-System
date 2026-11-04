@@ -4,6 +4,51 @@
 
 {% block content %}
 
+{% if pending %}
+<div class="task-box">
+    <h2><i data-lucide="inbox" class="section-icon"></i>Waiting for Your Review ({{ pending|length }})</h2>
+    <p class="hint">Staff submissions stay hidden from the public until you approve them.</p>
+
+    <div class="table-responsive">
+    <table>
+        <tr>
+            <th>Title</th>
+            <th>Author</th>
+            <th>Type</th>
+            <th>Submitted by</th>
+            <th>Preview</th>
+            <th></th>
+        </tr>
+        {% for item in pending %}
+        <tr>
+            <td>{{ item.title }}</td>
+            <td>{{ item.author }}</td>
+            <td>{{ item.resource_type }}</td>
+            <td>{{ item.submitter.name if item.submitter else "Former staff" }}</td>
+            <td>
+                {% if item.access_type == "file" %}
+                <a href="{{ url_for('resource_file', id=item.id) }}" target="_blank">Open file</a>
+                {% else %}
+                <a href="{{ item.external_url }}" target="_blank" rel="noopener">Open link</a>
+                {% endif %}
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('approve_resource', id=item.id) }}" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="icon-btn"><i data-lucide="check"></i>Approve</button>
+                </form>
+                <form method="POST" action="{{ url_for('delete_resource', id=item.id) }}" class="inline-form" onsubmit="return confirm('Reject and delete this submission?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="secondary-button icon-btn"><i data-lucide="x"></i>Reject</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    </div>
+</div>
+{% endif %}
+
 <div class="task-box">
     <h2><i data-lucide="upload-cloud" class="section-icon"></i>Add Resource</h2>
 
@@ -41,7 +86,7 @@
         </div>
 
         <div id="file_wrap" style="display:none;">
-            <label>File (PDF, DOC, PPT, EPUB, TXT)</label>
+            <label>File (PDF, DOC, PPT, EPUB, TXT, up to 25 MB)</label>
             <input type="file" name="resource_file">
         </div>
 
@@ -50,7 +95,7 @@
 </div>
 
 <div class="task-box">
-    <h2><i data-lucide="library" class="section-icon"></i>All Resources</h2>
+    <h2><i data-lucide="library" class="section-icon"></i>Published Resources</h2>
 
     <div class="table-responsive">
     <table>
@@ -60,6 +105,7 @@
             <th>Type</th>
             <th>Year</th>
             <th>Access</th>
+            <th>Added by</th>
             <th></th>
         </tr>
         {% for item in items %}
@@ -69,6 +115,7 @@
             <td>{{ item.resource_type }}</td>
             <td>{{ item.year }}</td>
             <td>{{ "File" if item.access_type == "file" else "Link" }}</td>
+            <td>{{ item.submitter.name if item.submitter else "Librarian" }}</td>
             <td>
                 <form method="POST" action="{{ url_for('delete_resource', id=item.id) }}" onsubmit="return confirm('Delete this resource?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -77,7 +124,7 @@
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="6"><div class="empty-state"><i data-lucide="folder-open"></i>No resources added yet.</div></td></tr>
+        <tr><td colspan="7"><div class="empty-state"><i data-lucide="folder-open"></i>No resources added yet.</div></td></tr>
         {% endfor %}
     </table>
     </div>

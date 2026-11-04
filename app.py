@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, flash, url_for, session, Response, send_from_directory
+from flask import Flask, render_template, request, redirect, flash, url_for, session, Response, send_from_directory, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager,
@@ -15,6 +15,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
+from functools import wraps
+from sqlalchemy import or_
 from dotenv import load_dotenv
 import os
 import csv
@@ -37,12 +39,8 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 UPLOAD_FOLDER = os.path.join(basedir, "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload
 ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "epub", "txt"}
-
-UPLOAD_FOLDER = os.path.join(basedir, "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "txt"}
 
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)
@@ -58,6 +56,22 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 
 
+def is_librarian():
+    # Accounts created before roles existed have no role set; they were all librarians.
+    return current_user.is_authenticated and (current_user.role or "librarian") == "librarian"
+
+
+def librarian_required(f):
+    @wraps(f)
+    @login_required
+    def wrapper(*args, **kwargs):
+        if not is_librarian():
+            flash("That page is for the librarian only.", "danger")
+            return redirect("/staff")
+        return f(*args, **kwargs)
+    return wrapper
+
+
 # =========================
 # DATABASE MODELS
 # =========================
@@ -66,6 +80,7 @@ class Librarian(db.Model, UserMixin):
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
+    role = db.Column(db.String(20), default="librarian")  # librarian / staff
 
 
 class Student(db.Model):
@@ -131,12 +146,24 @@ def ratelimit_handler(e):
     return redirect(request.referrer or "/")
 
 
+@app.errorhandler(413)
+def file_too_large(e):
+    flash("That file is too large. The limit is 25 MB.", "danger")
+    return redirect(request.referrer or "/")
+
+
 # =========================
 # LIBRARIAN AUTH
 # =========================
 @app.route("/register", methods=["GET", "POST"])
 @limiter.limit("10 per hour")
 def register():
+    # Open only until the first account exists. After that, the librarian
+    # creates staff accounts, so strangers can't sign themselves up.
+    if Librarian.query.count() > 0:
+        flash("Registration is closed. Please ask the librarian to create your account.", "danger")
+        return redirect("/login")
+
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -163,7 +190,7 @@ def register():
             flash("This email already has an account. Please login.", "danger")
             return redirect("/register")
 
-        librarian = Librarian(name=name, email=email, password=generate_password_hash(password))
+        librarian = Librarian(name=name, email=email, role="librarian", password=generate_password_hash(password))
         db.session.add(librarian)
         db.session.commit()
 
@@ -186,9 +213,11 @@ def login():
             return redirect("/login")
 
         login_user(librarian)
+        if librarian.role == "staff":
+            return redirect("/staff")
         return redirect("/dashboard")
 
-    return render_template("login.html")
+    return render_template("login.html", registration_open=(Librarian.query.count() == 0))
 
 
 @app.route("/logout")
@@ -341,6 +370,9 @@ class DigitalResource(db.Model):
     file_path = db.Column(db.String(300))
     external_url = db.Column(db.String(500))
     date_added = db.Column(db.String(50), default=lambda: datetime.now().strftime("%Y-%m-%d"))
+    status = db.Column(db.String(20), default="approved")  # approved / pending
+    submitted_by = db.Column(db.Integer, db.ForeignKey("librarian.id"))
+    submitter = db.relationship("Librarian", foreign_keys=[submitted_by])
 
 
 def get_settings():
@@ -402,12 +434,91 @@ def coming_soon():
 # =========================
 # DIGITAL RESOURCES (E-Books / Journals / Staff Publications)
 # =========================
+def is_approved(item):
+    return item.status in (None, "approved")
+
+
+def remove_resource_file(item):
+    if item.access_type == "file" and item.file_path:
+        full_path = os.path.join(app.config["UPLOAD_FOLDER"], item.file_path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
+
+
+def handle_resource_submission(back, status, submitted_by):
+    """Shared by the librarian's form (auto-approved) and the staff form (pending review)."""
+    title = request.form.get("title", "").strip()
+    author = request.form.get("author", "").strip()
+    resource_type = request.form.get("resource_type", "").strip()
+    year = request.form.get("year", "").strip()
+    description = request.form.get("description", "").strip()
+    access_type = request.form.get("access_type", "link").strip()
+    external_url = request.form.get("external_url", "").strip()
+
+    if not title:
+        flash("Title is required.", "danger")
+        return redirect(back)
+
+    if resource_type not in {"E-Book", "Journal", "Staff Publication"}:
+        resource_type = "E-Book"
+
+    file_path = None
+
+    if access_type == "file":
+        uploaded = request.files.get("resource_file")
+        if not uploaded or uploaded.filename == "":
+            flash("Please choose a file to upload.", "danger")
+            return redirect(back)
+
+        ext = uploaded.filename.rsplit(".", 1)[-1].lower() if "." in uploaded.filename else ""
+        if ext not in ALLOWED_EXTENSIONS:
+            flash(f"File type not allowed. Use one of: {', '.join(sorted(ALLOWED_EXTENSIONS))}", "danger")
+            return redirect(back)
+
+        safe_name = secure_filename(uploaded.filename)
+        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe_name}"
+        uploaded.save(os.path.join(app.config["UPLOAD_FOLDER"], unique_name))
+        file_path = unique_name
+    else:
+        access_type = "link"
+        if not external_url:
+            flash("Please provide a link.", "danger")
+            return redirect(back)
+        if not external_url.lower().startswith(("http://", "https://")):
+            flash("Links must start with http:// or https://", "danger")
+            return redirect(back)
+
+    resource = DigitalResource(
+        title=title,
+        author=author,
+        resource_type=resource_type,
+        year=year,
+        description=description,
+        access_type=access_type,
+        file_path=file_path,
+        external_url=external_url if access_type == "link" else None,
+        status=status,
+        submitted_by=submitted_by
+    )
+    db.session.add(resource)
+    db.session.commit()
+
+    if status == "pending":
+        flash(f"'{title}' submitted. The librarian will review it before it appears on the public site.", "success")
+    else:
+        flash(f"'{title}' added to {resource_type}s.", "success")
+    return redirect(back)
+
+
 @app.route("/resources")
 def resources():
     search = request.args.get("search", "").strip()
     resource_type = request.args.get("type", "all")
 
-    query = DigitalResource.query
+    # Only approved items are public. Older rows with no status count as approved.
+    query = DigitalResource.query.filter(
+        or_(DigitalResource.status == "approved", DigitalResource.status.is_(None))
+    )
     if resource_type != "all":
         query = query.filter_by(resource_type=resource_type)
     if search:
@@ -421,8 +532,16 @@ def resources():
 
 @app.route("/resources/<int:id>/file")
 def resource_file(id):
-    from flask import send_from_directory
     item = DigitalResource.query.get_or_404(id)
+
+    if not is_approved(item):
+        # Pending files can only be opened by the librarian or the person who submitted them.
+        allowed = current_user.is_authenticated and (
+            is_librarian() or item.submitted_by == current_user.id
+        )
+        if not allowed:
+            abort(404)
+
     if item.access_type != "file" or not item.file_path:
         flash("No file available for this resource.", "danger")
         return redirect("/resources")
@@ -430,88 +549,167 @@ def resource_file(id):
 
 
 @app.route("/resources/admin")
-@login_required
+@librarian_required
 def resources_admin():
-    items = DigitalResource.query.order_by(DigitalResource.date_added.desc()).all()
-    return render_template("resources_admin.html", items=items)
+    pending = DigitalResource.query.filter_by(status="pending").order_by(DigitalResource.date_added.desc()).all()
+    approved = DigitalResource.query.filter(
+        or_(DigitalResource.status == "approved", DigitalResource.status.is_(None))
+    ).order_by(DigitalResource.date_added.desc()).all()
+    return render_template("resources_admin.html", pending=pending, items=approved)
 
 
 @app.route("/resources/add", methods=["POST"])
-@login_required
+@librarian_required
 def add_resource():
-    title = request.form.get("title", "").strip()
-    author = request.form.get("author", "").strip()
-    resource_type = request.form.get("resource_type", "").strip()
-    year = request.form.get("year", "").strip()
-    description = request.form.get("description", "").strip()
-    access_type = request.form.get("access_type", "link").strip()
-    external_url = request.form.get("external_url", "").strip()
+    return handle_resource_submission("/resources/admin", "approved", None)
 
-    if not title:
-        flash("Title is required.", "danger")
-        return redirect("/resources/admin")
 
-    if resource_type not in {"E-Book", "Journal", "Staff Publication"}:
-        resource_type = "E-Book"
-
-    file_path = None
-
-    if access_type == "file":
-        uploaded = request.files.get("resource_file")
-        if not uploaded or uploaded.filename == "":
-            flash("Please choose a file to upload.", "danger")
-            return redirect("/resources/admin")
-
-        ext = uploaded.filename.rsplit(".", 1)[-1].lower() if "." in uploaded.filename else ""
-        if ext not in ALLOWED_EXTENSIONS:
-            flash(f"File type not allowed. Use one of: {', '.join(sorted(ALLOWED_EXTENSIONS))}", "danger")
-            return redirect("/resources/admin")
-
-        safe_name = secure_filename(uploaded.filename)
-        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe_name}"
-        uploaded.save(os.path.join(app.config["UPLOAD_FOLDER"], unique_name))
-        file_path = unique_name
-    else:
-        access_type = "link"
-        if not external_url:
-            flash("Please provide a link.", "danger")
-            return redirect("/resources/admin")
-
-    resource = DigitalResource(
-        title=title,
-        author=author,
-        resource_type=resource_type,
-        year=year,
-        description=description,
-        access_type=access_type,
-        file_path=file_path,
-        external_url=external_url if access_type == "link" else None
-    )
-    db.session.add(resource)
+@app.route("/resources/<int:id>/approve", methods=["POST"])
+@librarian_required
+def approve_resource(id):
+    item = DigitalResource.query.get_or_404(id)
+    item.status = "approved"
     db.session.commit()
-
-    flash(f"'{title}' added to {resource_type}s.", "success")
+    flash(f"'{item.title}' approved and now visible on the public site.", "success")
     return redirect("/resources/admin")
 
 
 @app.route("/resources/<int:id>/delete", methods=["POST"])
-@login_required
+@librarian_required
 def delete_resource(id):
     item = DigitalResource.query.get_or_404(id)
-
-    if item.access_type == "file" and item.file_path:
-        file_full_path = os.path.join(app.config["UPLOAD_FOLDER"], item.file_path)
-        if os.path.exists(file_full_path):
-            os.remove(file_full_path)
-
+    title = item.title
+    remove_resource_file(item)
     db.session.delete(item)
     db.session.commit()
-    flash(f"'{item.title}' removed.", "success")
+    flash(f"'{title}' removed.", "success")
     return redirect("/resources/admin")
 
 
-@app.route("/announcements/add", methods=["POST"])
+# =========================
+# STAFF ACCOUNTS (librarian creates and removes them)
+# =========================
+@app.route("/staff-accounts")
+@librarian_required
+def staff_accounts():
+    staff = Librarian.query.filter_by(role="staff").order_by(Librarian.name).all()
+    return render_template("staff_accounts.html", staff=staff)
+
+
+@app.route("/staff-accounts/add", methods=["POST"])
+@librarian_required
+def add_staff_account():
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+
+    if not name or not email or not password:
+        flash("Name, email and a temporary password are all required.", "danger")
+        return redirect("/staff-accounts")
+
+    if "@" not in email or "." not in email.split("@")[-1]:
+        flash("Please enter a valid email address.", "danger")
+        return redirect("/staff-accounts")
+
+    if len(password) < 8:
+        flash("The temporary password must be at least 8 characters.", "danger")
+        return redirect("/staff-accounts")
+
+    if Librarian.query.filter_by(email=email).first():
+        flash("An account with that email already exists.", "danger")
+        return redirect("/staff-accounts")
+
+    db.session.add(Librarian(
+        name=name, email=email, role="staff",
+        password=generate_password_hash(password)
+    ))
+    db.session.commit()
+    flash(f"Staff account created for {name}. Share the email and temporary password with them.", "success")
+    return redirect("/staff-accounts")
+
+
+@app.route("/staff-accounts/<int:id>/delete", methods=["POST"])
+@librarian_required
+def delete_staff_account(id):
+    account = Librarian.query.get_or_404(id)
+
+    if account.role != "staff":
+        flash("Only staff accounts can be removed here.", "danger")
+        return redirect("/staff-accounts")
+
+    # Keep anything they submitted; it just no longer points at a deleted account.
+    DigitalResource.query.filter_by(submitted_by=account.id).update({"submitted_by": None})
+    name = account.name
+    db.session.delete(account)
+    db.session.commit()
+    flash(f"Staff account for {name} removed.", "success")
+    return redirect("/staff-accounts")
+
+
+# =========================
+# STAFF AREA (what a staff member sees after logging in)
+# =========================
+@app.route("/staff")
 @login_required
+def staff_home():
+    if is_librarian():
+        return redirect("/dashboard")
+    mine = DigitalResource.query.filter_by(submitted_by=current_user.id).order_by(
+        DigitalResource.date_added.desc()
+    ).all()
+    return render_template("staff_home.html", items=mine)
+
+
+@app.route("/staff/resources/add", methods=["POST"])
+@login_required
+def staff_add_resource():
+    if is_librarian():
+        return redirect("/resources/admin")
+    return handle_resource_submission("/staff", "pending", current_user.id)
+
+
+@app.route("/staff/resources/<int:id>/delete", methods=["POST"])
+@login_required
+def staff_delete_resource(id):
+    item = DigitalResource.query.get_or_404(id)
+    if item.submitted_by != current_user.id:
+        flash("You can only remove your own submissions.", "danger")
+        return redirect("/staff")
+    title = item.title
+    remove_resource_file(item)
+    db.session.delete(item)
+    db.session.commit()
+    flash(f"'{title}' removed.", "success")
+    return redirect("/staff")
+
+
+@app.route("/account/password", methods=["POST"])
+@login_required
+@limiter.limit("10 per hour")
+def change_password():
+    back = "/dashboard" if is_librarian() else "/staff"
+    current = request.form.get("current_password", "")
+    new = request.form.get("new_password", "")
+    confirm = request.form.get("confirm_password", "")
+
+    if not check_password_hash(current_user.password, current):
+        flash("Your current password is incorrect.", "danger")
+        return redirect(back)
+    if len(new) < 8:
+        flash("The new password must be at least 8 characters.", "danger")
+        return redirect(back)
+    if new != confirm:
+        flash("The new passwords do not match.", "danger")
+        return redirect(back)
+
+    current_user.password = generate_password_hash(new)
+    db.session.commit()
+    flash("Password updated.", "success")
+    return redirect(back)
+
+
+@app.route("/announcements/add", methods=["POST"])
+@librarian_required
 def add_announcement():
     title = request.form.get("title", "").strip()
     body = request.form.get("body", "").strip()
@@ -527,7 +725,7 @@ def add_announcement():
 
 
 @app.route("/announcements/<int:id>/delete", methods=["POST"])
-@login_required
+@librarian_required
 def delete_announcement(id):
     announcement = Announcement.query.get_or_404(id)
     db.session.delete(announcement)
@@ -537,7 +735,7 @@ def delete_announcement(id):
 
 
 @app.route("/settings/update", methods=["POST"])
-@login_required
+@librarian_required
 def update_settings():
     settings = get_settings()
     settings.opening_hours = request.form.get("opening_hours", "").strip()
@@ -550,7 +748,7 @@ def update_settings():
 
 
 @app.route("/books/<int:id>/toggle-featured", methods=["POST"])
-@login_required
+@librarian_required
 def toggle_featured(id):
     book = Book.query.get_or_404(id)
     book.featured = not book.featured
@@ -563,7 +761,7 @@ def toggle_featured(id):
 # LIBRARIAN DASHBOARD
 # =========================
 @app.route("/dashboard")
-@login_required
+@librarian_required
 def dashboard():
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -598,7 +796,7 @@ def dashboard():
 # STUDENT MANAGEMENT
 # =========================
 @app.route("/students/import", methods=["POST"])
-@login_required
+@librarian_required
 def import_students():
     file = request.files.get("csv_file")
 
@@ -647,7 +845,7 @@ def import_students():
 
 
 @app.route("/students/promote", methods=["POST"])
-@login_required
+@librarian_required
 def promote_students():
     valid_levels = {"100", "200", "300"}  # 400 is the ceiling -- no further promotion
     promoted = 0
@@ -663,7 +861,7 @@ def promote_students():
 
 
 @app.route("/students/add", methods=["POST"])
-@login_required
+@librarian_required
 def add_student():
     student_id = request.form.get("student_id", "").strip()
     name = request.form.get("name", "").strip()
@@ -693,7 +891,7 @@ def add_student():
 # BOOK CATALOG
 # =========================
 @app.route("/books")
-@login_required
+@librarian_required
 def books():
     search = request.args.get("search", "").strip()
 
@@ -730,7 +928,7 @@ def books():
 
 
 @app.route("/books/add", methods=["POST"])
-@login_required
+@librarian_required
 def add_book():
     date = request.form.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
     title = request.form.get("title", "").strip()
@@ -777,7 +975,7 @@ def add_book():
 
 
 @app.route("/books/<int:id>/delete", methods=["POST"])
-@login_required
+@librarian_required
 def delete_book(id):
     book = Book.query.get_or_404(id)
 
@@ -790,14 +988,14 @@ def delete_book(id):
 
 
 @app.route("/books/deleted")
-@login_required
+@librarian_required
 def deleted_books():
     removed = Book.query.filter_by(is_deleted=True).order_by(Book.date_deleted.desc()).all()
     return render_template("deleted_books.html", books=removed)
 
 
 @app.route("/books/<int:id>/restore", methods=["POST"])
-@login_required
+@librarian_required
 def restore_book(id):
     book = Book.query.get_or_404(id)
     book.is_deleted = False
@@ -814,7 +1012,7 @@ def restore_book(id):
 # REPORTS
 # =========================
 @app.route("/reports")
-@login_required
+@librarian_required
 def reports():
     today = datetime.now().strftime("%Y-%m-%d")
 
@@ -865,7 +1063,7 @@ def reports():
 
 
 @app.route("/reports/export")
-@login_required
+@librarian_required
 def export_loans():
     loans = Loan.query.order_by(Loan.date.desc()).all()
 
@@ -893,7 +1091,7 @@ def export_loans():
 
 
 @app.route("/loans")
-@login_required
+@librarian_required
 def loans():
     today = datetime.now().strftime("%Y-%m-%d")
     active_loans = Loan.query.filter(Loan.date_returned.is_(None)).order_by(Loan.due_date).all()
@@ -934,7 +1132,7 @@ def loans():
 
 
 @app.route("/loans/add", methods=["POST"])
-@login_required
+@librarian_required
 def add_loan():
     date = request.form.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
     borrower_name = request.form.get("borrower_name", "").strip()
@@ -1010,7 +1208,7 @@ def add_loan():
 
 
 @app.route("/loans/<int:id>/renew", methods=["POST"])
-@login_required
+@librarian_required
 def renew_loan(id):
     loan = Loan.query.get_or_404(id)
 
@@ -1031,7 +1229,7 @@ def renew_loan(id):
 
 
 @app.route("/loans/<int:id>/return", methods=["POST"])
-@login_required
+@librarian_required
 def return_loan(id):
     loan = Loan.query.get_or_404(id)
 
