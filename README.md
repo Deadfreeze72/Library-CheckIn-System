@@ -1,141 +1,178 @@
 # Library Management System
 
-A web-based library management system built with **Flask**. It lets librarians manage the book catalogue, loans, students, and digital resources, while students and visitors can search the catalogue, check in at a kiosk, and view their own borrowing activity.
+A web-based library management system built with Python and Flask to simplify library operations and improve access to library resources.
+
+The system provides librarians with tools to manage books, students, borrowing activities, check-ins, reports, and digital resources. It also provides students and visitors with a public catalogue, a check-in kiosk, and a student portal where they can view their borrowing activities.
 
 ## Features
 
-### For librarians (login required)
-- **Dashboard** with today's check-ins, active loans, overdue count, and book availability
-- **Book catalogue management**: add books with ISBN, accession number, copies, and acquisition type (Purchased / Donated / Other)
-- **Soft delete and restore**: deleted books move to a "Deleted Books" list and can be restored
-- **Featured books**: highlight selected books on the home page
-- **Loan management**: check books out, renew loans, and mark them returned
-- **Automatic due dates**: 14 days for students (levels 100-400), 30 days for other borrowers
-- **Copy tracking**: prevents loaning more copies than exist or the same copy twice
-- **Student management**: register students one by one or bulk import from CSV
-- **Level promotion**: promote all students to their next level in one click
-- **Reports**: most borrowed books, busiest check-in days, and overall totals
-- **CSV export** of the full loan history
-- **Announcements** and editable **library settings** (opening hours and contact details)
-- **Digital resources**: upload files or add links to e-books, journals, and research papers
+### Librarian Management
+- Dashboard with library activity summaries.
+- Book catalogue management and availability tracking.
+- Book borrowing, renewals, and returns.
+- Automatic borrowing due dates.
+- Student registration and bulk CSV import.
+- Student level promotion.
+- Loan history and library reports.
+- CSV export of loan records.
+- Announcements and library settings.
+- Digital resource management.
+- Deleted book recovery.
 
-### For students and visitors (no librarian login)
-- **Home page** with featured books, announcements, and opening hours
-- **Public catalogue** with search by title, author, or ISBN and live availability
-- **Check-in kiosk** where students check in with their student ID or name
-- **Student portal** showing current loans, due-soon and overdue counts, and borrowing history
-- **Digital resources** browsing and downloading
+### Student and Visitor Features
+- Public library homepage.
+- Searchable book catalogue.
+- Real-time book availability.
+- Library check-in kiosk.
+- Student portal with borrowing history.
+- Current, due-soon, and overdue loan information.
+- Access to digital resources.
 
-## Tech Stack
+## Technology Stack
 
-- Python 3 and Flask
-- Flask-SQLAlchemy (SQLite by default)
-- Flask-Login (librarian authentication)
-- Flask-WTF (CSRF protection)
-- Flask-Limiter (rate limiting)
-- python-dotenv (environment variables)
-- Werkzeug (password hashing and secure file uploads)
+| Technology | Purpose |
+|---|---|
+| Python | Main programming language |
+| Flask | Web application framework |
+| Flask-SQLAlchemy | Database management |
+| Flask-Login | User authentication |
+| Flask-WTF | Form handling and CSRF protection |
+| Flask-Limiter | Rate limiting |
+| PostgreSQL / SQLite | Database |
+| Gunicorn | Production application server |
+| Render | Application hosting |
 
 ## Getting Started
 
-### 1. Clone the repository
+### Prerequisites
+- Python 3
+- Git
+- pip
+
+### Installation
+
+**1. Clone the repository**
 
 ```bash
-git clone <your-repository-url>
-cd <your-project-folder>
+git clone https://github.com/Deadfreeze72/Library-CheckIn-System.git
+cd Library-CheckIn-System
 ```
 
-### 2. Create and activate a virtual environment
+**2. Create a virtual environment**
 
 ```bash
 python -m venv venv
+```
 
-# Windows
-venv\Scripts\activate
+**3. Activate the environment**
 
-# macOS / Linux
+Windows PowerShell:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+macOS / Linux:
+
+```bash
 source venv/bin/activate
 ```
 
-### 3. Install dependencies
+**4. Install dependencies**
+
+If the project contains a `requirements.txt` file:
 
 ```bash
-pip install flask flask-sqlalchemy flask-login flask-wtf flask-limiter python-dotenv
+pip install -r requirements.txt
 ```
 
-### 4. Configure environment variables
+**5. Configure environment variables**
 
-Create a file named `.env` in the project folder:
+Create a `.env` file in the project directory and configure the required variables.
 
-```
-SECRET_KEY=replace-this-with-a-long-random-string
+```env
+SECRET_KEY=your-secure-secret-key
 FLASK_DEBUG=0
-# Optional: use a different database instead of the default SQLite file
-# DATABASE_URL=sqlite:///library.db
+DATABASE_URL=your-database-url
 ```
 
-If `SECRET_KEY` is not set, a random key is generated each time the app starts, which logs everyone out on restart. Always set one.
+Use the database configuration appropriate for your environment. Do not commit your `.env` file or expose database credentials.
 
-### 5. Run the app
+**6. Start the application**
 
 ```bash
 python app.py
 ```
 
-Open **http://127.0.0.1:5000** in your browser. The database and tables are created automatically on first run.
+Open your browser and visit:
 
-### 6. Create the first librarian account
+`http://127.0.0.1:5000`
 
-Go to **/register**, create an account, then sign in at **/login**.
+## Student CSV Import
 
-## Importing Students from CSV
+Librarians can import student records using a CSV file with the following column headers:
 
-From the dashboard, upload a `.csv` file with these column headers:
-
-```
+```csv
 student_id,name,course,level
 ```
 
-- `student_id` and `name` are required
-- `level` should be `100`, `200`, `300`, or `400` (anything else defaults to `100`)
-- Students whose ID already exists are skipped
+- `student_id` and `name` are required.
+- Supported student levels include 100, 200, 300, and 400.
+- Existing student IDs are skipped during import.
 
-## Main Pages
+## Main Application Pages
 
 | Page | URL | Access |
-|------|-----|--------|
+|---|---|---|
 | Home | `/` | Public |
 | Catalogue | `/catalogue` | Public |
-| Digital resources | `/resources` | Public |
-| Check-in kiosk | `/checkin` | Public |
-| Student portal | `/portal` | Student ID or name |
-| Librarian login | `/login` | Public |
+| Digital Resources | `/resources` | Public |
+| Check-in Kiosk | `/checkin` | Public |
+| Student Portal | `/portal` | Student |
+| Librarian Login | `/login` | Public |
 | Dashboard | `/dashboard` | Librarian |
 | Books | `/books` | Librarian |
 | Loans | `/loans` | Librarian |
 | Reports | `/reports` | Librarian |
-| Manage resources | `/resources/admin` | Librarian |
+| Manage Resources | `/resources/admin` | Librarian |
+
+## Deployment
+
+The application can be deployed using Render.
+
+A production deployment requires:
+- A configured production database.
+- Environment variables, including a secure `SECRET_KEY`.
+- A production application server such as Gunicorn.
+- Persistent storage for uploaded files, or an appropriate external file-storage service.
+
+## Security
+
+The application includes security measures such as:
+- Password hashing.
+- CSRF protection.
+- Rate limiting on selected routes.
+- File upload restrictions and filename sanitization.
+
+Sensitive configuration files, database credentials, and private user data should never be committed to the repository.
 
 ## Project Structure
 
-```
-.
-├── app.py            # Flask application: routes, models, configuration
-├── templates/        # HTML templates
-├── static/           # CSS, images, and other static files
-├── uploads/          # Uploaded digital resources (created automatically)
-├── library.db        # SQLite database (created automatically)
-└── .env              # Environment variables (not committed)
+```text
+Library-CheckIn-System/
+├── app.py
+├── templates/
+├── static/
+├── uploads/
+├── requirements.txt
+├── .gitignore
+└── README.md
 ```
 
-## Security Notes
-
-- Passwords are hashed with Werkzeug
-- All forms are protected with CSRF tokens
-- Login, registration, and check-in routes are rate limited
-- Uploads are restricted to approved file types and filenames are sanitized
-- Keep `.env`, `library.db`, and `uploads/` out of Git by listing them in `.gitignore`
+*Actual project structure may include additional files and directories.*
 
 ## Author
 
-Built by **Caesar Weyipe Awariwe**.
+**Caesar Weyipe Awariwe**
+
+GitHub: https://github.com/Deadfreeze72
