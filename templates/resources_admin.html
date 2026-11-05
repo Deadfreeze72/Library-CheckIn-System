@@ -51,6 +51,7 @@
 
 <div class="task-box">
     <h2><i data-lucide="upload-cloud" class="section-icon"></i>Add Resource</h2>
+    <p class="hint">Uploaded files are stored in the database, so they stay put when the site restarts. Space used: <strong>{{ storage_used_mb }} MB</strong> of about {{ storage_budget_mb }} MB.</p>
 
     <form method="POST" action="{{ url_for('add_resource') }}" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -86,7 +87,7 @@
         </div>
 
         <div id="file_wrap" style="display:none;">
-            <label>File (PDF, DOC, PPT, EPUB, TXT, up to 25 MB)</label>
+            <label>File (PDF, DOC, PPT, EPUB, TXT, up to 15 MB)</label>
             <input type="file" name="resource_file">
         </div>
 

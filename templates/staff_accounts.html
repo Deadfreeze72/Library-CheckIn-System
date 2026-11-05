@@ -39,7 +39,11 @@
             <td>{{ s.name }}</td>
             <td>{{ s.email }}</td>
             <td>
-                <form method="POST" action="{{ url_for('delete_staff_account', id=s.id) }}" onsubmit="return confirm('Remove this staff account? Their submissions stay in the system.')">
+                <form method="POST" action="{{ url_for('reset_staff_password', id=s.id) }}" class="inline-form" onsubmit="return confirm('Give this person a new temporary password? Their old password will stop working.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="secondary-button icon-btn"><i data-lucide="key-round"></i>Reset Password</button>
+                </form>
+                <form method="POST" action="{{ url_for('delete_staff_account', id=s.id) }}" class="inline-form" onsubmit="return confirm('Remove this staff account? Their submissions stay in the system.')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="link-button icon-btn"><i data-lucide="trash-2"></i>Remove</button>
                 </form>
@@ -50,6 +54,25 @@
         {% endfor %}
     </table>
     </div>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="key-round" class="section-icon"></i>Your Password</h2>
+
+    <form method="POST" action="{{ url_for('change_password') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Current Password</label>
+        <input type="password" name="current_password" autocomplete="current-password" required>
+
+        <label>New Password</label>
+        <input type="password" name="new_password" autocomplete="new-password" required>
+
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" autocomplete="new-password" required>
+
+        <button type="submit">Update My Password</button>
+    </form>
 </div>
 
 {% endblock %}

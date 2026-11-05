@@ -31,6 +31,10 @@
 
     </form>
 
+    {% if email_enabled %}
+    <p><a href="{{ url_for('forgot_password') }}">Forgot your password?</a></p>
+    {% endif %}
+
     {% if registration_open %}
     <p>First time setting up? <a href="{{ url_for('register') }}">Create the librarian account</a></p>
     {% else %}
