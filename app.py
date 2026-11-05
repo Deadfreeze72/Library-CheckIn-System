@@ -13,19 +13,28 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from werkzeug.utils import secure_filename
+from werkzeug.middleware.proxy_fix import ProxyFix
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from datetime import datetime, timedelta
 from functools import wraps
-from sqlalchemy import or_
+from sqlalchemy import or_, func, inspect, text
 from dotenv import load_dotenv
 import os
 import csv
 import io
 import json
+import hashlib
+import mimetypes
+import secrets
+import urllib.request
 
 load_dotenv()
 
 app = Flask(__name__)
+
+# Render sits behind a proxy. This makes the app see the real visitor address
+# and https, which the rate limiter and password-reset links both rely on.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or os.urandom(32).hex()
 
@@ -39,7 +48,9 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 UPLOAD_FOLDER = os.path.join(basedir, "static", "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB per upload
+app.config["MAX_CONTENT_LENGTH"] = 15 * 1024 * 1024  # 15 MB per upload
+STORAGE_BUDGET_MB = 500  # roughly what the free Neon plan holds; shown to the librarian
+RESET_LINK_MAX_AGE = 3600  # password reset links last one hour
 ALLOWED_EXTENSIONS = {"pdf", "doc", "docx", "ppt", "pptx", "epub", "txt"}
 
 db = SQLAlchemy(app)
@@ -81,6 +92,7 @@ class Librarian(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(20), default="librarian")  # librarian / staff
+    must_change_password = db.Column(db.Boolean, default=False)
 
 
 class Student(db.Model):
@@ -148,7 +160,7 @@ def ratelimit_handler(e):
 
 @app.errorhandler(413)
 def file_too_large(e):
-    flash("That file is too large. The limit is 25 MB.", "danger")
+    flash("That file is too large. The limit is 15 MB.", "danger")
     return redirect(request.referrer or "/")
 
 
@@ -217,7 +229,7 @@ def login():
             return redirect("/staff")
         return redirect("/dashboard")
 
-    return render_template("login.html", registration_open=(Librarian.query.count() == 0))
+    return render_template("login.html", registration_open=(Librarian.query.count() == 0), email_enabled=email_configured())
 
 
 @app.route("/logout")
@@ -359,6 +371,15 @@ class LibrarySettings(db.Model):
     contact_address = db.Column(db.String(250), default="")
 
 
+class StoredFile(db.Model):
+    """Uploaded documents live in the database so they survive Render restarts."""
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(100))
+    size = db.Column(db.Integer, default=0)
+    data = db.Column(db.LargeBinary, nullable=False)
+
+
 class DigitalResource(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
@@ -367,7 +388,8 @@ class DigitalResource(db.Model):
     year = db.Column(db.String(10))
     description = db.Column(db.Text)
     access_type = db.Column(db.String(10))  # file / link
-    file_path = db.Column(db.String(300))
+    file_path = db.Column(db.String(300))  # older uploads saved on disk
+    file_id = db.Column(db.Integer, db.ForeignKey("stored_file.id"))
     external_url = db.Column(db.String(500))
     date_added = db.Column(db.String(50), default=lambda: datetime.now().strftime("%Y-%m-%d"))
     status = db.Column(db.String(20), default="approved")  # approved / pending
@@ -438,11 +460,17 @@ def is_approved(item):
     return item.status in (None, "approved")
 
 
-def remove_resource_file(item):
-    if item.access_type == "file" and item.file_path:
+def delete_resource_record(item):
+    file_id = item.file_id
+    if item.file_path:  # older uploads that were saved on disk
         full_path = os.path.join(app.config["UPLOAD_FOLDER"], item.file_path)
         if os.path.exists(full_path):
             os.remove(full_path)
+    db.session.delete(item)
+    db.session.flush()
+    if file_id:
+        StoredFile.query.filter_by(id=file_id).delete()
+    db.session.commit()
 
 
 def handle_resource_submission(back, status, submitted_by):
@@ -462,7 +490,7 @@ def handle_resource_submission(back, status, submitted_by):
     if resource_type not in {"E-Book", "Journal", "Staff Publication"}:
         resource_type = "E-Book"
 
-    file_path = None
+    file_id = None
 
     if access_type == "file":
         uploaded = request.files.get("resource_file")
@@ -475,10 +503,21 @@ def handle_resource_submission(back, status, submitted_by):
             flash(f"File type not allowed. Use one of: {', '.join(sorted(ALLOWED_EXTENSIONS))}", "danger")
             return redirect(back)
 
-        safe_name = secure_filename(uploaded.filename)
-        unique_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe_name}"
-        uploaded.save(os.path.join(app.config["UPLOAD_FOLDER"], unique_name))
-        file_path = unique_name
+        data = uploaded.read()
+        if not data:
+            flash("That file is empty.", "danger")
+            return redirect(back)
+
+        safe_name = secure_filename(uploaded.filename) or f"file.{ext}"
+        stored = StoredFile(
+            filename=safe_name,
+            content_type=mimetypes.guess_type(safe_name)[0] or "application/octet-stream",
+            size=len(data),
+            data=data
+        )
+        db.session.add(stored)
+        db.session.flush()
+        file_id = stored.id
     else:
         access_type = "link"
         if not external_url:
@@ -495,7 +534,8 @@ def handle_resource_submission(back, status, submitted_by):
         year=year,
         description=description,
         access_type=access_type,
-        file_path=file_path,
+        file_path=None,
+        file_id=file_id,
         external_url=external_url if access_type == "link" else None,
         status=status,
         submitted_by=submitted_by
@@ -542,10 +582,22 @@ def resource_file(id):
         if not allowed:
             abort(404)
 
-    if item.access_type != "file" or not item.file_path:
-        flash("No file available for this resource.", "danger")
-        return redirect("/resources")
-    return send_from_directory(app.config["UPLOAD_FOLDER"], item.file_path, as_attachment=False)
+    if item.access_type == "file" and item.file_id:
+        stored = StoredFile.query.get(item.file_id)
+        if stored is None:
+            abort(404)
+        ext = stored.filename.rsplit(".", 1)[-1].lower() if "." in stored.filename else ""
+        disposition = "inline" if ext in ("pdf", "txt") else "attachment"
+        response = Response(bytes(stored.data), mimetype=stored.content_type or "application/octet-stream")
+        response.headers["Content-Disposition"] = f'{disposition}; filename="{stored.filename}"'
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    if item.access_type == "file" and item.file_path:  # older upload saved on disk
+        return send_from_directory(app.config["UPLOAD_FOLDER"], item.file_path, as_attachment=False)
+
+    flash("No file available for this resource.", "danger")
+    return redirect("/resources")
 
 
 @app.route("/resources/admin")
@@ -555,7 +607,11 @@ def resources_admin():
     approved = DigitalResource.query.filter(
         or_(DigitalResource.status == "approved", DigitalResource.status.is_(None))
     ).order_by(DigitalResource.date_added.desc()).all()
-    return render_template("resources_admin.html", pending=pending, items=approved)
+    used_bytes = db.session.query(func.coalesce(func.sum(StoredFile.size), 0)).scalar() or 0
+    return render_template(
+        "resources_admin.html", pending=pending, items=approved,
+        storage_used_mb=round(used_bytes / 1024 / 1024, 1), storage_budget_mb=STORAGE_BUDGET_MB
+    )
 
 
 @app.route("/resources/add", methods=["POST"])
@@ -579,9 +635,7 @@ def approve_resource(id):
 def delete_resource(id):
     item = DigitalResource.query.get_or_404(id)
     title = item.title
-    remove_resource_file(item)
-    db.session.delete(item)
-    db.session.commit()
+    delete_resource_record(item)
     flash(f"'{title}' removed.", "success")
     return redirect("/resources/admin")
 
@@ -620,11 +674,30 @@ def add_staff_account():
         return redirect("/staff-accounts")
 
     db.session.add(Librarian(
-        name=name, email=email, role="staff",
+        name=name, email=email, role="staff", must_change_password=True,
         password=generate_password_hash(password)
     ))
     db.session.commit()
     flash(f"Staff account created for {name}. Share the email and temporary password with them.", "success")
+    return redirect("/staff-accounts")
+
+
+@app.route("/staff-accounts/<int:id>/reset-password", methods=["POST"])
+@librarian_required
+def reset_staff_password(id):
+    account = Librarian.query.get_or_404(id)
+
+    if account.role != "staff":
+        flash("Only staff passwords can be reset here.", "danger")
+        return redirect("/staff-accounts")
+
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no look-alike characters
+    temporary = "".join(secrets.choice(alphabet) for _ in range(10))
+    account.password = generate_password_hash(temporary)
+    account.must_change_password = True
+    db.session.commit()
+
+    flash(f"New temporary password for {account.name}: {temporary}  (shown once. Share it with them; they must choose a new one when they log in.)", "success")
     return redirect("/staff-accounts")
 
 
@@ -644,6 +717,128 @@ def delete_staff_account(id):
     db.session.commit()
     flash(f"Staff account for {name} removed.", "success")
     return redirect("/staff-accounts")
+
+
+# =========================
+# PASSWORD RESET BY EMAIL
+# =========================
+def email_configured():
+    return bool(os.environ.get("BREVO_API_KEY") and os.environ.get("MAIL_FROM"))
+
+
+def send_email(to_email, subject, text_body):
+    """Sends through Brevo's web API. Render's free plan blocks ordinary email ports."""
+    payload = json.dumps({
+        "sender": {
+            "name": os.environ.get("MAIL_FROM_NAME", "St. John Bosco College Library"),
+            "email": os.environ["MAIL_FROM"]
+        },
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": text_body
+    }).encode("utf-8")
+    request_out = urllib.request.Request(
+        "https://api.brevo.com/v3/smtp/email",
+        data=payload,
+        method="POST",
+        headers={
+            "api-key": os.environ["BREVO_API_KEY"],
+            "content-type": "application/json",
+            "accept": "application/json"
+        }
+    )
+    with urllib.request.urlopen(request_out, timeout=15) as response_in:
+        return response_in.status
+
+
+def _reset_serializer():
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="password-reset")
+
+
+def _password_fingerprint(account):
+    # Changes whenever the password changes, so a reset link only works once.
+    return hashlib.sha256(account.password.encode("utf-8")).hexdigest()[:16]
+
+
+def make_reset_token(account):
+    return _reset_serializer().dumps({"id": account.id, "fp": _password_fingerprint(account)})
+
+
+def account_from_reset_token(token):
+    try:
+        data = _reset_serializer().loads(token, max_age=RESET_LINK_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+    account = Librarian.query.get(data.get("id"))
+    if account is None or data.get("fp") != _password_fingerprint(account):
+        return None
+    return account
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+@limiter.limit("5 per hour")
+def forgot_password():
+    if request.method == "POST" and email_configured():
+        email = request.form.get("email", "").strip().lower()
+        account = Librarian.query.filter_by(email=email).first()
+        if account:
+            link = url_for("reset_password", token=make_reset_token(account), _external=True)
+            body = (
+                f"Hello {account.name},\n\n"
+                "Someone asked to reset the password for your St. John Bosco College Library account.\n"
+                f"Use this link within one hour to choose a new password:\n\n{link}\n\n"
+                "If you didn't ask for this, you can ignore this email and your password will stay the same."
+            )
+            try:
+                send_email(account.email, "Reset your library password", body)
+            except Exception:
+                app.logger.exception("Could not send password reset email")
+        # Same answer whether or not the email exists, so nobody can probe for accounts.
+        flash("If that email belongs to an account, a reset link is on its way. It works for one hour.", "success")
+        return redirect("/login")
+
+    return render_template("forgot_password.html", email_enabled=email_configured())
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+@limiter.limit("20 per hour")
+def reset_password(token):
+    account = account_from_reset_token(token)
+    if account is None:
+        flash("This reset link is invalid or has expired. Please request a new one.", "danger")
+        return redirect("/forgot-password")
+
+    if request.method == "POST":
+        new = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        if len(new) < 8:
+            flash("The new password must be at least 8 characters.", "danger")
+            return redirect(url_for("reset_password", token=token))
+        if new != confirm:
+            flash("The passwords do not match.", "danger")
+            return redirect(url_for("reset_password", token=token))
+
+        account.password = generate_password_hash(new)
+        account.must_change_password = False
+        db.session.commit()
+        flash("Your password has been reset. You can log in now.", "success")
+        return redirect("/login")
+
+    return render_template("reset_password.html", token=token)
+
+
+@app.before_request
+def require_password_change():
+    # A staff member on a temporary password can only reach the page where they change it.
+    if (
+        current_user.is_authenticated
+        and current_user.role == "staff"
+        and current_user.must_change_password
+        and request.endpoint not in ("staff_home", "change_password", "logout", "static")
+    ):
+        flash("Please choose a new password to continue.", "danger")
+        return redirect("/staff")
 
 
 # =========================
@@ -676,9 +871,7 @@ def staff_delete_resource(id):
         flash("You can only remove your own submissions.", "danger")
         return redirect("/staff")
     title = item.title
-    remove_resource_file(item)
-    db.session.delete(item)
-    db.session.commit()
+    delete_resource_record(item)
     flash(f"'{title}' removed.", "success")
     return redirect("/staff")
 
@@ -687,7 +880,7 @@ def staff_delete_resource(id):
 @login_required
 @limiter.limit("10 per hour")
 def change_password():
-    back = "/dashboard" if is_librarian() else "/staff"
+    back = "/staff-accounts" if is_librarian() else "/staff"
     current = request.form.get("current_password", "")
     new = request.form.get("new_password", "")
     confirm = request.form.get("confirm_password", "")
@@ -701,8 +894,12 @@ def change_password():
     if new != confirm:
         flash("The new passwords do not match.", "danger")
         return redirect(back)
+    if new == current:
+        flash("Please choose a password different from your current one.", "danger")
+        return redirect(back)
 
     current_user.password = generate_password_hash(new)
+    current_user.must_change_password = False
     db.session.commit()
     flash("Password updated.", "success")
     return redirect(back)
@@ -1245,8 +1442,39 @@ def return_loan(id):
     return redirect("/loans")
 
 
+def add_missing_columns():
+    """Adds columns the code expects but the database doesn't have yet.
+    Only ever adds; never removes or changes existing data."""
+    inspector = inspect(db.engine)
+    for table in db.metadata.sorted_tables:
+        if not inspector.has_table(table.name):
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table.name)}
+        for column in table.columns:
+            if column.name in existing:
+                continue
+            column_type = column.type.compile(dialect=db.engine.dialect)
+            default_sql = ""
+            if column.default is not None and getattr(column.default, "is_scalar", False):
+                value = column.default.arg
+                if isinstance(value, bool):
+                    default_sql = " DEFAULT TRUE" if value else " DEFAULT FALSE"
+                elif isinstance(value, (int, float)):
+                    default_sql = f" DEFAULT {value}"
+                elif isinstance(value, str):
+                    default_sql = " DEFAULT '" + value.replace("'", "''") + "'"
+            try:
+                db.session.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {column_type}{default_sql}'))
+                db.session.commit()
+                print(f"Database updated: added {table.name}.{column.name}")
+            except Exception as error:
+                db.session.rollback()
+                print(f"Could not add {table.name}.{column.name}: {error}")
+
+
 with app.app_context():
     db.create_all()
+    add_missing_columns()
 
 
 if __name__ == "__main__":
