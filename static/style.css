@@ -150,6 +150,8 @@ nav a:hover { opacity: 1; color: #7fd6c2; }
 .brand-text {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
     line-height: 1.2;
 }
 
@@ -179,6 +181,34 @@ nav a:hover { opacity: 1; color: #7fd6c2; }
 .auth-logo .logo-icon { width: 42px; height: 42px; }
 .auth-logo .brand-primary { font-size: 19px; color: var(--ink); }
 .auth-logo .brand-secondary { color: var(--ink-soft); }
+
+/* CREST (school logo) */
+.logo-img {
+    display: block;
+    height: 40px;
+    width: auto;
+    padding: 3px;
+    background: #ffffff;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.auth-logo .logo-img {
+    height: 118px;
+    padding: 0;
+    background: none;
+    border-radius: 0;
+}
+
+/* Sign-in pages. Optional photo: save a picture as static/images/login-bg.jpg */
+body.auth-page {
+    min-height: 100vh;
+    background-color: var(--nav-bg);
+    background-image: linear-gradient(rgba(23, 33, 31, 0.6), rgba(23, 33, 31, 0.6)), url('images/login-bg.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
 
 /* ICONS */
 nav a {
@@ -294,16 +324,41 @@ nav a svg { width: 16px; height: 16px; }
 }
 
 /* PUBLIC HOMEPAGE */
+/* Optional photo: save a picture as static/images/hero.jpg and it appears behind
+   the search box. Without it you simply get the dark green background. */
 .hero {
     text-align: center;
-    padding: 40px 20px;
+    padding: 56px 24px 48px 24px;
     margin-bottom: 24px;
+    border-radius: var(--radius);
+    color: #ffffff;
+    background-color: var(--nav-bg);
+    background-image: linear-gradient(rgba(23, 33, 31, 0.62), rgba(23, 33, 31, 0.62)), url('images/hero.jpg');
+    background-size: cover;
+    background-position: center;
 }
 
 .hero h1 {
     font-family: var(--font-display);
-    font-size: 30px;
+    font-size: 32px;
     margin-bottom: 22px;
+    color: #ffffff;
+}
+
+.hero-eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 8px;
+}
+
+.hero .logo-img {
+    height: 88px;
+    margin: 0 auto 14px auto;
+    padding: 6px;
+    border-radius: 12px;
 }
 
 .hero-search {
@@ -320,6 +375,8 @@ nav a svg { width: 16px; height: 16px; }
 
 .hero-search button {
     padding: 12px 16px;
+    width: auto;
+    flex-shrink: 0;
 }
 
 .hero-search button svg { width: 18px; height: 18px; }

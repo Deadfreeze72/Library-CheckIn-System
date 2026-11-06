@@ -5,7 +5,7 @@
 {% block content %}
 
 <div class="task-box">
-    <h2>Deleted Books</h2>
+    <h2><i data-lucide="trash-2" class="section-icon"></i>Deleted Books</h2>
     <p class="hint"><a href="{{ url_for('books') }}">&larr; Back to Catalog</a></p>
 
     <div class="table-responsive">
@@ -28,12 +28,12 @@
             <td>
                 <form method="POST" action="{{ url_for('restore_book', id=book.id) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="secondary-button">Restore</button>
+                    <button type="submit" class="secondary-button icon-btn"><i data-lucide="rotate-ccw"></i>Restore</button>
                 </form>
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="6">No deleted books.</td></tr>
+        <tr><td colspan="6"><div class="empty-state"><i data-lucide="check-circle"></i>No deleted books.</div></td></tr>
         {% endfor %}
     </table>
     </div>
