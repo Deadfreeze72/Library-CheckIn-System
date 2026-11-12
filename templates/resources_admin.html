@@ -1,19 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}Manage Resources{% endblock %}
+{% block title %}Manage E-Resources{% endblock %}
 
 {% block content %}
 
 {% if pending %}
 <div class="task-box">
     <h2><i data-lucide="inbox" class="section-icon"></i>Waiting for Your Review ({{ pending|length }})</h2>
-    <p class="hint">Staff submissions stay hidden from the public until you approve them.</p>
+    <p class="hint">Submissions from teaching staff stay hidden from the public until you approve them.</p>
 
     <div class="table-responsive">
     <table>
         <tr>
             <th>Title</th>
             <th>Author</th>
+            <th>Publisher</th>
             <th>Type</th>
             <th>Submitted by</th>
             <th>Preview</th>
@@ -23,6 +24,7 @@
         <tr>
             <td>{{ item.title }}</td>
             <td>{{ item.author }}</td>
+            <td>{{ item.publisher }}</td>
             <td>{{ item.resource_type }}</td>
             <td>{{ item.submitter.name if item.submitter else "Former staff" }}</td>
             <td>
@@ -50,17 +52,20 @@
 {% endif %}
 
 <div class="task-box">
-    <h2><i data-lucide="upload-cloud" class="section-icon"></i>Add Resource</h2>
+    <h2><i data-lucide="upload-cloud" class="section-icon"></i>Add E-Resource</h2>
     <p class="hint">Uploaded files are stored in the database, so they stay put when the site restarts. Space used: <strong>{{ storage_used_mb }} MB</strong> of about {{ storage_budget_mb }} MB.</p>
 
     <form method="POST" action="{{ url_for('add_resource') }}" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <label>Title</label>
-        <input type="text" name="title" placeholder="Resource title" required>
+        <input type="text" name="title" placeholder="Title of the E-Book, journal or publication" required>
 
-        <label>Author</label>
-        <input type="text" name="author" placeholder="Author or publisher">
+        <label>Author(s)</label>
+        <input type="text" name="author" placeholder="Author or authors">
+
+        <label>Publisher</label>
+        <input type="text" name="publisher" placeholder="Publisher or journal name (optional)">
 
         <label>Type</label>
         <select name="resource_type">
@@ -75,7 +80,7 @@
         <label>Description</label>
         <textarea name="description" rows="3" placeholder="Optional description"></textarea>
 
-        <label>How is this resource accessed?</label>
+        <label>How is this E-Resource accessed?</label>
         <select name="access_type" id="access_type" onchange="document.getElementById('file_wrap').style.display = this.value === 'file' ? 'block' : 'none'; document.getElementById('link_wrap').style.display = this.value === 'link' ? 'block' : 'none';">
             <option value="link">External Link</option>
             <option value="file">Upload File</option>
@@ -91,18 +96,19 @@
             <input type="file" name="resource_file">
         </div>
 
-        <button type="submit">Add Resource</button>
+        <button type="submit">Add E-Resource</button>
     </form>
 </div>
 
 <div class="task-box">
-    <h2><i data-lucide="library" class="section-icon"></i>Published Resources</h2>
+    <h2><i data-lucide="library" class="section-icon"></i>Published E-Resources</h2>
 
     <div class="table-responsive">
     <table>
         <tr>
             <th>Title</th>
             <th>Author</th>
+            <th>Publisher</th>
             <th>Type</th>
             <th>Year</th>
             <th>Access</th>
@@ -113,19 +119,20 @@
         <tr>
             <td>{{ item.title }}</td>
             <td>{{ item.author }}</td>
+            <td>{{ item.publisher }}</td>
             <td>{{ item.resource_type }}</td>
             <td>{{ item.year }}</td>
             <td>{{ "File" if item.access_type == "file" else "Link" }}</td>
             <td>{{ item.submitter.name if item.submitter else "Librarian" }}</td>
             <td>
-                <form method="POST" action="{{ url_for('delete_resource', id=item.id) }}" onsubmit="return confirm('Delete this resource?')">
+                <form method="POST" action="{{ url_for('delete_resource', id=item.id) }}" onsubmit="return confirm('Delete this E-Resource?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="link-button icon-btn"><i data-lucide="trash-2"></i>Delete</button>
                 </form>
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="7"><div class="empty-state"><i data-lucide="folder-open"></i>No resources added yet.</div></td></tr>
+        <tr><td colspan="8"><div class="empty-state"><i data-lucide="folder-open"></i>No E-Resources added yet.</div></td></tr>
         {% endfor %}
     </table>
     </div>

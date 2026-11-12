@@ -14,6 +14,7 @@
     <div class="card"><i data-lucide="repeat" class="card-icon"></i><h3>Active Loans</h3><p>{{ active_loans|length }}</p></div>
     <div class="card"><i data-lucide="alert-triangle" class="card-icon"></i><h3>Overdue</h3><p>{{ overdue_count }}</p></div>
     <div class="card"><i data-lucide="book-open" class="card-icon"></i><h3>Books Available</h3><p>{{ available_books }} / {{ total_books }}</p></div>
+    <div class="card"><i data-lucide="folder-open" class="card-icon"></i><h3>E-Resources</h3><p>{{ eresource_total }}</p></div>
 </div>
 
 <div class="task-box">
@@ -22,16 +23,20 @@
     <div class="table-responsive">
     <table>
         <tr>
-            <th>Student</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Purpose</th>
             <th>Time</th>
         </tr>
         {% for c in todays_checkins %}
         <tr>
-            <td>{{ c.student.name }}</td>
-            <td>{{ c.timestamp }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.kind }}</td>
+            <td>{{ c.purpose or "-" }}</td>
+            <td>{{ c.time }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="2">No check-ins yet today.</td></tr>
+        <tr><td colspan="4">No check-ins yet today.</td></tr>
         {% endfor %}
     </table>
     </div>
@@ -66,6 +71,26 @@
         {% endfor %}
     </table>
     </div>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="folder-open" class="section-icon"></i>E-Resources</h2>
+
+    <div class="table-responsive">
+    <table>
+        <tr><th>Type</th><th>Published</th></tr>
+        {% for kind, count in eresource_counts %}
+        <tr><td>{{ kind }}s</td><td>{{ count }}</td></tr>
+        {% endfor %}
+    </table>
+    </div>
+
+    {% if (current_user.role or 'librarian') == 'librarian' %}
+    {% if pending_count %}
+    <p class="hint" style="margin-top:14px;"><strong>{{ pending_count }}</strong> submission{{ '' if pending_count == 1 else 's' }} from teaching staff waiting for your review. <a href="{{ url_for('resources_admin') }}">Review now &rarr;</a></p>
+    {% endif %}
+    <p class="hint"><a href="{{ url_for('resources_admin') }}">Add or manage E-Resources &rarr;</a></p>
+    {% endif %}
 </div>
 
 <div class="task-box">
@@ -131,7 +156,7 @@
 
 <div class="task-box">
     <h2><i data-lucide="megaphone" class="section-icon"></i>Library News &amp; Announcements</h2>
-    <p class="hint">These appear on the public homepage.</p>
+    <p class="hint">The homepage shows your 3 newest live posts. A post stops showing after its "show until" date, but stays in this list so you can extend or delete it.</p>
 
     <form method="POST" action="{{ url_for('add_announcement') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -142,25 +167,42 @@
         <label>Details</label>
         <textarea name="body" rows="3" placeholder="Optional details"></textarea>
 
+        <label>Show until (optional)</label>
+        <input type="date" name="expires" min="{{ today }}">
+        <p class="hint">The last day this appears on the homepage. Leave it blank to keep it up until you delete it.</p>
+
         <button type="submit">Post Announcement</button>
     </form>
 
     <div class="table-responsive" style="margin-top:16px;">
     <table>
-        <tr><th>Title</th><th>Date</th><th></th></tr>
+        <tr><th>Title</th><th>Posted</th><th>Shows until</th><th>Status</th><th></th></tr>
         {% for a in announcements %}
         <tr>
             <td>{{ a.title }}</td>
             <td>{{ a.date }}</td>
+            <td>{{ a.expires or "No end date" }}</td>
             <td>
-                <form method="POST" action="{{ url_for('delete_announcement', id=a.id) }}" onsubmit="return confirm('Delete this announcement?')">
+                {% if a.expires and a.expires < today %}
+                <span class="status overdue">Expired</span>
+                {% else %}
+                <span class="status ontime">Live</span>
+                {% endif %}
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('update_announcement_expiry', id=a.id) }}" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="date" name="expires" value="{{ a.expires if (a.expires and a.expires >= today) else '' }}" min="{{ today }}">
+                    <button type="submit" class="secondary-button">Save date</button>
+                </form>
+                <form method="POST" action="{{ url_for('delete_announcement', id=a.id) }}" class="inline-form" onsubmit="return confirm('Delete this announcement?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="link-button">Delete</button>
                 </form>
             </td>
         </tr>
         {% else %}
-        <tr><td colspan="3">No announcements posted yet.</td></tr>
+        <tr><td colspan="5">No announcements posted yet.</td></tr>
         {% endfor %}
     </table>
     </div>

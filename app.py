@@ -67,20 +67,46 @@ login_manager.init_app(app)
 login_manager.login_view = "login"
 
 
-def is_librarian():
+ROLE_LABELS = {"librarian": "Librarian", "assistant": "Other librarian", "staff": "Teaching staff"}
+
+
+def user_role():
     # Accounts created before roles existed have no role set; they were all librarians.
-    return current_user.is_authenticated and (current_user.role or "librarian") == "librarian"
+    if not current_user.is_authenticated:
+        return None
+    return current_user.role or "librarian"
 
 
-def librarian_required(f):
-    @wraps(f)
-    @login_required
-    def wrapper(*args, **kwargs):
-        if not is_librarian():
-            flash("That page is for the librarian only.", "danger")
-            return redirect("/staff")
-        return f(*args, **kwargs)
-    return wrapper
+def is_librarian():
+    return user_role() == "librarian"
+
+
+def has_desk_access():
+    """The librarian and other librarians can use the dashboard, books and loans."""
+    return user_role() in ("librarian", "assistant")
+
+
+def home_for_role():
+    return "/dashboard" if has_desk_access() else "/staff"
+
+
+def role_required(allowed, message):
+    def decorator(f):
+        @wraps(f)
+        @login_required
+        def wrapper(*args, **kwargs):
+            if user_role() not in allowed:
+                flash(message, "danger")
+                return redirect(home_for_role())
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+# Librarian only: reports, E-Resources management, staff accounts.
+librarian_required = role_required(("librarian",), "That page is for the librarian only.")
+# Librarian and other librarians: dashboard, books, loans.
+desk_required = role_required(("librarian", "assistant"), "You don't have access to that page.")
 
 
 # =========================
@@ -120,6 +146,18 @@ class Book(db.Model):
     date_deleted = db.Column(db.String(50))
     featured = db.Column(db.Boolean, default=False)
     loans = db.relationship("Loan", backref="book", lazy=True)
+
+
+class VisitorCheckIn(db.Model):
+    """Staff and community members who check in. Students use CheckIn."""
+    id = db.Column(db.Integer, primary_key=True)
+    visitor_type = db.Column(db.String(30), nullable=False)  # Staff / Community member
+    name = db.Column(db.String(120), nullable=False)
+    purpose = db.Column(db.String(250))
+    timestamp = db.Column(
+        db.String(50),
+        default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M")
+    )
 
 
 class Loan(db.Model):
@@ -242,35 +280,64 @@ def logout():
 # =========================
 # PUBLIC CHECK-IN KIOSK (no login required)
 # =========================
+VISITOR_TYPES = ("Staff", "Community member")
+
+
 @app.route("/checkin", methods=["GET", "POST"])
 @limiter.limit("20 per minute")
 def checkin():
+    students = Student.query.order_by(Student.name).all()
+
     if request.method == "POST":
+        visitor_type = request.form.get("visitor_type", "Student").strip()
         identifier = request.form.get("identifier", "").strip()
+        visitor_name = request.form.get("visitor_name", "").strip()
+        purpose = request.form.get("purpose", "").strip()
+
+        def try_again(message):
+            # Show the pop-up again with what they typed, so they only fix the problem.
+            flash(message, "danger")
+            return render_template(
+                "checkin.html", students=students, reopen=True,
+                form_type=visitor_type if visitor_type in VISITOR_TYPES else "Student",
+                form_identifier=identifier, form_name=visitor_name, form_purpose=purpose
+            )
+
+        if visitor_type in VISITOR_TYPES:
+            if len(visitor_name) < 2:
+                return try_again("Please enter your name.")
+            if not purpose:
+                return try_again("Please tell us the purpose of your visit.")
+
+            db.session.add(VisitorCheckIn(
+                visitor_type=visitor_type, name=visitor_name[:120], purpose=purpose[:250]
+            ))
+            db.session.commit()
+            flash(f"Welcome, {visitor_name}! You're checked in.", "success")
+            return redirect("/checkin")
 
         if not identifier:
-            flash("Please enter your student ID or name.", "danger")
-            return redirect("/checkin")
+            return try_again("Please enter your student ID or name.")
 
         student = Student.query.filter(
             (Student.student_id == identifier) | (Student.name.ilike(identifier))
         ).first()
 
         if student is None:
-            flash(
-                "We couldn't find that ID or name on file. Please see the librarian to be registered.",
-                "danger"
+            return try_again(
+                "We couldn't find that ID or name on file. Please see the librarian to be registered. "
+                "If you're not a student, choose Staff or Community member."
             )
-            return redirect("/checkin")
 
-        check_in = CheckIn(student_id=student.id)
-        db.session.add(check_in)
+        db.session.add(CheckIn(student_id=student.id))
         db.session.commit()
-
         flash(f"Welcome, {student.name}! You're checked in.", "success")
         return redirect("/checkin")
 
-    return render_template("checkin.html", students=Student.query.order_by(Student.name).all())
+    return render_template(
+        "checkin.html", students=students, reopen=False,
+        form_type="Student", form_identifier="", form_name="", form_purpose=""
+    )
 
 
 @app.route("/portal/login", methods=["GET", "POST"])
@@ -361,6 +428,7 @@ class Announcement(db.Model):
     title = db.Column(db.String(200), nullable=False)
     body = db.Column(db.Text)
     date = db.Column(db.String(50), default=lambda: datetime.now().strftime("%Y-%m-%d"))
+    expires = db.Column(db.String(50))  # last day it shows on the homepage; empty = no end date
 
 
 class LibrarySettings(db.Model):
@@ -384,6 +452,7 @@ class DigitalResource(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     author = db.Column(db.String(150))
+    publisher = db.Column(db.String(150))
     resource_type = db.Column(db.String(20))  # E-Book / Journal / Staff Publication
     year = db.Column(db.String(10))
     description = db.Column(db.Text)
@@ -410,40 +479,89 @@ def get_settings():
 def home():
     settings = get_settings()
     featured = Book.query.filter_by(is_deleted=False, featured=True).limit(3).all()
-    announcements = Announcement.query.order_by(Announcement.date.desc()).limit(3).all()
+    today = datetime.now().strftime("%Y-%m-%d")
+    # Only news that hasn't passed its "show until" date. No date means no end.
+    announcements = Announcement.query.filter(
+        or_(Announcement.expires.is_(None), Announcement.expires == "", Announcement.expires >= today)
+    ).order_by(Announcement.date.desc(), Announcement.id.desc()).limit(3).all()
     return render_template("home.html", settings=settings, featured=featured, announcements=announcements)
+
+
+RESOURCE_TYPES = ["E-Book", "Journal", "Staff Publication"]
+
+
+def search_books(search):
+    query = Book.query.filter_by(is_deleted=False)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(Book.title.ilike(like), Book.author.ilike(like), Book.isbn.ilike(like)))
+    return query.order_by(Book.title)
+
+
+def search_resources(search, resource_type=None):
+    # Only approved items are public. Older rows with no status count as approved.
+    query = DigitalResource.query.filter(
+        or_(DigitalResource.status == "approved", DigitalResource.status.is_(None))
+    )
+    if resource_type:
+        query = query.filter(DigitalResource.resource_type == resource_type)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(
+            DigitalResource.title.ilike(like),
+            DigitalResource.author.ilike(like),
+            DigitalResource.publisher.ilike(like),
+            DigitalResource.description.ilike(like)
+        ))
+    return query.order_by(DigitalResource.title)
 
 
 @app.route("/catalogue")
 def catalogue():
     search = request.args.get("search", "").strip()
     resource_type = request.args.get("type", "all")
+    if resource_type not in ["all", "books"] + RESOURCE_TYPES:
+        resource_type = "all"
 
-    results = []
+    books_found, resources_found = [], []
     if resource_type in ("all", "books"):
-        query = Book.query.filter_by(is_deleted=False)
-        if search:
-            like = f"%{search}%"
-            query = query.filter(
-                (Book.title.ilike(like)) | (Book.author.ilike(like)) | (Book.isbn.ilike(like))
-            )
-        results = query.order_by(Book.title).all()
+        books_found = search_books(search).all()
+    if resource_type == "all":
+        resources_found = search_resources(search).all()
+    elif resource_type in RESOURCE_TYPES:
+        resources_found = search_resources(search, resource_type).all()
 
     active_counts = {}
     for loan in Loan.query.filter(Loan.date_returned.is_(None)).all():
         active_counts[loan.book_id] = active_counts.get(loan.book_id, 0) + 1
 
     available_map = {}
-    for b in results:
+    for b in books_found:
         remaining = (b.copies or 0) - active_counts.get(b.id, 0)
         available_map[b.id] = remaining if remaining > 0 else 0
 
+    # If this tab found nothing, tell the visitor where else the same search does have matches.
+    other_matches = []
+    if search and not books_found and not resources_found and resource_type != "all":
+        if resource_type != "books":
+            count = search_books(search).count()
+            if count:
+                other_matches.append(("Books", "books", count))
+        for kind in RESOURCE_TYPES:
+            if kind != resource_type:
+                count = search_resources(search, kind).count()
+                if count:
+                    other_matches.append((kind + "s", kind, count))
+
     return render_template(
         "catalogue.html",
-        results=results,
+        books_found=books_found,
+        resources_found=resources_found,
         available_map=available_map,
         search=search,
-        resource_type=resource_type
+        resource_type=resource_type,
+        other_matches=other_matches,
+        settings=get_settings()
     )
 
 
@@ -477,6 +595,7 @@ def handle_resource_submission(back, status, submitted_by):
     """Shared by the librarian's form (auto-approved) and the staff form (pending review)."""
     title = request.form.get("title", "").strip()
     author = request.form.get("author", "").strip()
+    publisher = request.form.get("publisher", "").strip()
     resource_type = request.form.get("resource_type", "").strip()
     year = request.form.get("year", "").strip()
     description = request.form.get("description", "").strip()
@@ -530,6 +649,7 @@ def handle_resource_submission(back, status, submitted_by):
     resource = DigitalResource(
         title=title,
         author=author,
+        publisher=publisher,
         resource_type=resource_type,
         year=year,
         description=description,
@@ -563,7 +683,7 @@ def resources():
         query = query.filter_by(resource_type=resource_type)
     if search:
         like = f"%{search}%"
-        query = query.filter((DigitalResource.title.ilike(like)) | (DigitalResource.author.ilike(like)))
+        query = query.filter(or_(DigitalResource.title.ilike(like), DigitalResource.author.ilike(like), DigitalResource.publisher.ilike(like)))
 
     items = query.order_by(DigitalResource.date_added.desc()).all()
 
@@ -596,7 +716,7 @@ def resource_file(id):
     if item.access_type == "file" and item.file_path:  # older upload saved on disk
         return send_from_directory(app.config["UPLOAD_FOLDER"], item.file_path, as_attachment=False)
 
-    flash("No file available for this resource.", "danger")
+    flash("No file available for this E-Resource.", "danger")
     return redirect("/resources")
 
 
@@ -646,8 +766,8 @@ def delete_resource(id):
 @app.route("/staff-accounts")
 @librarian_required
 def staff_accounts():
-    staff = Librarian.query.filter_by(role="staff").order_by(Librarian.name).all()
-    return render_template("staff_accounts.html", staff=staff)
+    staff = Librarian.query.filter(Librarian.role.in_(["assistant", "staff"])).order_by(Librarian.role, Librarian.name).all()
+    return render_template("staff_accounts.html", staff=staff, role_labels=ROLE_LABELS)
 
 
 @app.route("/staff-accounts/add", methods=["POST"])
@@ -656,6 +776,9 @@ def add_staff_account():
     name = request.form.get("name", "").strip()
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "")
+    role = request.form.get("role", "staff")
+    if role not in ("assistant", "staff"):
+        role = "staff"
 
     if not name or not email or not password:
         flash("Name, email and a temporary password are all required.", "danger")
@@ -674,11 +797,11 @@ def add_staff_account():
         return redirect("/staff-accounts")
 
     db.session.add(Librarian(
-        name=name, email=email, role="staff", must_change_password=True,
+        name=name, email=email, role=role, must_change_password=True,
         password=generate_password_hash(password)
     ))
     db.session.commit()
-    flash(f"Staff account created for {name}. Share the email and temporary password with them.", "success")
+    flash(f"{ROLE_LABELS[role]} account created for {name}. Share the email and temporary password with them.", "success")
     return redirect("/staff-accounts")
 
 
@@ -687,8 +810,8 @@ def add_staff_account():
 def reset_staff_password(id):
     account = Librarian.query.get_or_404(id)
 
-    if account.role != "staff":
-        flash("Only staff passwords can be reset here.", "danger")
+    if account.role not in ("assistant", "staff"):
+        flash("Only staff and other-librarian passwords can be reset here.", "danger")
         return redirect("/staff-accounts")
 
     alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no look-alike characters
@@ -706,8 +829,8 @@ def reset_staff_password(id):
 def delete_staff_account(id):
     account = Librarian.query.get_or_404(id)
 
-    if account.role != "staff":
-        flash("Only staff accounts can be removed here.", "danger")
+    if account.role not in ("assistant", "staff"):
+        flash("Only staff and other-librarian accounts can be removed here.", "danger")
         return redirect("/staff-accounts")
 
     # Keep anything they submitted; it just no longer points at a deleted account.
@@ -715,7 +838,7 @@ def delete_staff_account(id):
     name = account.name
     db.session.delete(account)
     db.session.commit()
-    flash(f"Staff account for {name} removed.", "success")
+    flash(f"Account for {name} removed.", "success")
     return redirect("/staff-accounts")
 
 
@@ -830,15 +953,17 @@ def reset_password(token):
 
 @app.before_request
 def require_password_change():
-    # A staff member on a temporary password can only reach the page where they change it.
-    if (
+    # Anyone on a temporary password can only reach the page where they change it.
+    if not (
         current_user.is_authenticated
-        and current_user.role == "staff"
+        and current_user.role in ("staff", "assistant")
         and current_user.must_change_password
-        and request.endpoint not in ("staff_home", "change_password", "logout", "static")
     ):
+        return
+    own_page = "staff_home" if current_user.role == "staff" else "account_page"
+    if request.endpoint not in (own_page, "change_password", "logout", "static"):
         flash("Please choose a new password to continue.", "danger")
-        return redirect("/staff")
+        return redirect("/staff" if current_user.role == "staff" else "/account")
 
 
 # =========================
@@ -847,7 +972,7 @@ def require_password_change():
 @app.route("/staff")
 @login_required
 def staff_home():
-    if is_librarian():
+    if has_desk_access():
         return redirect("/dashboard")
     mine = DigitalResource.query.filter_by(submitted_by=current_user.id).order_by(
         DigitalResource.date_added.desc()
@@ -858,8 +983,8 @@ def staff_home():
 @app.route("/staff/resources/add", methods=["POST"])
 @login_required
 def staff_add_resource():
-    if is_librarian():
-        return redirect("/resources/admin")
+    if has_desk_access():
+        return redirect("/resources/admin" if is_librarian() else "/dashboard")
     return handle_resource_submission("/staff", "pending", current_user.id)
 
 
@@ -876,11 +1001,17 @@ def staff_delete_resource(id):
     return redirect("/staff")
 
 
+@app.route("/account")
+@login_required
+def account_page():
+    return render_template("account.html", role_label=ROLE_LABELS.get(user_role(), "Account"))
+
+
 @app.route("/account/password", methods=["POST"])
 @login_required
 @limiter.limit("10 per hour")
 def change_password():
-    back = "/staff-accounts" if is_librarian() else "/staff"
+    back = {"librarian": "/staff-accounts", "assistant": "/account"}.get(user_role(), "/staff")
     current = request.form.get("current_password", "")
     new = request.form.get("new_password", "")
     confirm = request.form.get("confirm_password", "")
@@ -905,8 +1036,23 @@ def change_password():
     return redirect(back)
 
 
+def parse_expiry(raw):
+    """Turns the 'show until' box into a clean date. Returns (date or None, error message or None).
+    A blank box means the news has no end date."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None, None
+    try:
+        day = datetime.strptime(raw, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None, "That 'show until' date isn't valid."
+    if day < datetime.now().strftime("%Y-%m-%d"):
+        return None, "The 'show until' date can't be in the past."
+    return day, None
+
+
 @app.route("/announcements/add", methods=["POST"])
-@librarian_required
+@desk_required
 def add_announcement():
     title = request.form.get("title", "").strip()
     body = request.form.get("body", "").strip()
@@ -915,14 +1061,40 @@ def add_announcement():
         flash("Announcement title is required.", "danger")
         return redirect("/dashboard")
 
-    db.session.add(Announcement(title=title, body=body))
+    expires, problem = parse_expiry(request.form.get("expires"))
+    if problem:
+        flash(problem, "danger")
+        return redirect("/dashboard")
+
+    db.session.add(Announcement(title=title, body=body, expires=expires))
     db.session.commit()
-    flash("Announcement posted.", "success")
+    if expires:
+        flash(f"Announcement posted. It will show until {expires}.", "success")
+    else:
+        flash("Announcement posted. It has no end date, so it stays until you delete it.", "success")
+    return redirect("/dashboard")
+
+
+@app.route("/announcements/<int:id>/expiry", methods=["POST"])
+@desk_required
+def update_announcement_expiry(id):
+    announcement = Announcement.query.get_or_404(id)
+    expires, problem = parse_expiry(request.form.get("expires"))
+    if problem:
+        flash(problem, "danger")
+        return redirect("/dashboard")
+
+    announcement.expires = expires
+    db.session.commit()
+    if expires:
+        flash(f"'{announcement.title}' will now show until {expires}.", "success")
+    else:
+        flash(f"'{announcement.title}' now has no end date.", "success")
     return redirect("/dashboard")
 
 
 @app.route("/announcements/<int:id>/delete", methods=["POST"])
-@librarian_required
+@desk_required
 def delete_announcement(id):
     announcement = Announcement.query.get_or_404(id)
     db.session.delete(announcement)
@@ -932,7 +1104,7 @@ def delete_announcement(id):
 
 
 @app.route("/settings/update", methods=["POST"])
-@librarian_required
+@desk_required
 def update_settings():
     settings = get_settings()
     settings.opening_hours = request.form.get("opening_hours", "").strip()
@@ -945,7 +1117,7 @@ def update_settings():
 
 
 @app.route("/books/<int:id>/toggle-featured", methods=["POST"])
-@librarian_required
+@desk_required
 def toggle_featured(id):
     book = Book.query.get_or_404(id)
     book.featured = not book.featured
@@ -958,15 +1130,23 @@ def toggle_featured(id):
 # LIBRARIAN DASHBOARD
 # =========================
 @app.route("/dashboard")
-@librarian_required
+@desk_required
 def dashboard():
     today = datetime.now().strftime("%Y-%m-%d")
 
-    todays_checkins = (
-        CheckIn.query.filter(CheckIn.timestamp.like(f"{today}%"))
-        .order_by(CheckIn.id.desc())
-        .all()
-    )
+    todays_checkins = [
+        {"name": c.student.name if c.student else "(removed student)", "kind": "Student",
+         "purpose": "", "time": c.timestamp}
+        for c in CheckIn.query.filter(CheckIn.timestamp.like(f"{today}%")).all()
+    ] + [
+        {"name": v.name, "kind": v.visitor_type, "purpose": v.purpose or "", "time": v.timestamp}
+        for v in VisitorCheckIn.query.filter(VisitorCheckIn.timestamp.like(f"{today}%")).all()
+    ]
+    todays_checkins.sort(key=lambda entry: entry["time"], reverse=True)
+
+    eresource_counts = [(kind, search_resources("", kind).count()) for kind in RESOURCE_TYPES]
+    eresource_total = sum(count for _, count in eresource_counts)
+    pending_count = DigitalResource.query.filter_by(status="pending").count()
 
     active_loans = Loan.query.filter(Loan.date_returned.is_(None)).all()
     overdue_loans = [loan for loan in active_loans if loan.due_date < today]
@@ -984,7 +1164,10 @@ def dashboard():
         total_books=total_books,
         available_books=available_books,
         today=today,
-        announcements=Announcement.query.order_by(Announcement.date.desc()).all(),
+        eresource_counts=eresource_counts,
+        eresource_total=eresource_total,
+        pending_count=pending_count,
+        announcements=Announcement.query.order_by(Announcement.date.desc(), Announcement.id.desc()).all(),
         settings=get_settings()
     )
 
@@ -993,7 +1176,7 @@ def dashboard():
 # STUDENT MANAGEMENT
 # =========================
 @app.route("/students/import", methods=["POST"])
-@librarian_required
+@desk_required
 def import_students():
     file = request.files.get("csv_file")
 
@@ -1042,7 +1225,7 @@ def import_students():
 
 
 @app.route("/students/promote", methods=["POST"])
-@librarian_required
+@desk_required
 def promote_students():
     valid_levels = {"100", "200", "300"}  # 400 is the ceiling -- no further promotion
     promoted = 0
@@ -1058,7 +1241,7 @@ def promote_students():
 
 
 @app.route("/students/add", methods=["POST"])
-@librarian_required
+@desk_required
 def add_student():
     student_id = request.form.get("student_id", "").strip()
     name = request.form.get("name", "").strip()
@@ -1088,7 +1271,7 @@ def add_student():
 # BOOK CATALOG
 # =========================
 @app.route("/books")
-@librarian_required
+@desk_required
 def books():
     search = request.args.get("search", "").strip()
 
@@ -1125,7 +1308,7 @@ def books():
 
 
 @app.route("/books/add", methods=["POST"])
-@librarian_required
+@desk_required
 def add_book():
     date = request.form.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
     title = request.form.get("title", "").strip()
@@ -1172,7 +1355,7 @@ def add_book():
 
 
 @app.route("/books/<int:id>/delete", methods=["POST"])
-@librarian_required
+@desk_required
 def delete_book(id):
     book = Book.query.get_or_404(id)
 
@@ -1185,14 +1368,14 @@ def delete_book(id):
 
 
 @app.route("/books/deleted")
-@librarian_required
+@desk_required
 def deleted_books():
     removed = Book.query.filter_by(is_deleted=True).order_by(Book.date_deleted.desc()).all()
     return render_template("deleted_books.html", books=removed)
 
 
 @app.route("/books/<int:id>/restore", methods=["POST"])
-@librarian_required
+@desk_required
 def restore_book(id):
     book = Book.query.get_or_404(id)
     book.is_deleted = False
@@ -1230,6 +1413,9 @@ def reports():
     for c in CheckIn.query.all():
         day = c.timestamp[:10]  # "YYYY-MM-DD" prefix of the stored timestamp
         day_counts[day] = day_counts.get(day, 0) + 1
+    for v in VisitorCheckIn.query.all():
+        day = v.timestamp[:10]
+        day_counts[day] = day_counts.get(day, 0) + 1
 
     busiest_days = sorted(day_counts.items(), key=lambda x: x[1], reverse=True)[:7]
     max_day_count = busiest_days[0][1] if busiest_days else 1
@@ -1242,7 +1428,7 @@ def reports():
     ).count()
     total_students = Student.query.count()
     total_book_titles = Book.query.filter_by(is_deleted=False).count()
-    total_checkins = CheckIn.query.count()
+    total_checkins = CheckIn.query.count() + VisitorCheckIn.query.count()
 
     return render_template(
         "reports.html",
@@ -1288,7 +1474,7 @@ def export_loans():
 
 
 @app.route("/loans")
-@librarian_required
+@desk_required
 def loans():
     today = datetime.now().strftime("%Y-%m-%d")
     active_loans = Loan.query.filter(Loan.date_returned.is_(None)).order_by(Loan.due_date).all()
@@ -1329,7 +1515,7 @@ def loans():
 
 
 @app.route("/loans/add", methods=["POST"])
-@librarian_required
+@desk_required
 def add_loan():
     date = request.form.get("date", "").strip() or datetime.now().strftime("%Y-%m-%d")
     borrower_name = request.form.get("borrower_name", "").strip()
@@ -1405,7 +1591,7 @@ def add_loan():
 
 
 @app.route("/loans/<int:id>/renew", methods=["POST"])
-@librarian_required
+@desk_required
 def renew_loan(id):
     loan = Loan.query.get_or_404(id)
 
@@ -1426,7 +1612,7 @@ def renew_loan(id):
 
 
 @app.route("/loans/<int:id>/return", methods=["POST"])
-@librarian_required
+@desk_required
 def return_loan(id):
     loan = Loan.query.get_or_404(id)
 

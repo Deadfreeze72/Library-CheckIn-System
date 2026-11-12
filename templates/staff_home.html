@@ -6,11 +6,11 @@
 
 <div class="dashboard-header">
     <h1>Welcome, {{ current_user.name }}</h1>
-    <p>Add your own e-books, journals or staff publications. The librarian reviews each one before it appears on the public site.</p>
+    <p>Add your own E-Books, journals or staff publications. The librarian reviews each one before it appears on the public site.</p>
 </div>
 
 <div class="task-box">
-    <h2><i data-lucide="upload-cloud" class="section-icon"></i>Submit a Resource</h2>
+    <h2><i data-lucide="upload-cloud" class="section-icon"></i>Submit an E-Resource</h2>
 
     <form method="POST" action="{{ url_for('staff_add_resource') }}" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -20,6 +20,9 @@
 
         <label>Author(s)</label>
         <input type="text" name="author" placeholder="Author or authors">
+
+        <label>Publisher</label>
+        <input type="text" name="publisher" placeholder="Publisher or journal name (optional)">
 
         <label>Type</label>
         <select name="resource_type">

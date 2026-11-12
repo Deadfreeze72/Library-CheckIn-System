@@ -2,7 +2,7 @@
 
 A web-based library management system for a teacher-training college. It combines a public library website, a student self-service account, a librarian dashboard, and a staff area where lecturers can contribute their own publications for the librarian to approve.
 
-**Live demo:** https://library-checkin-system.onrender.com
+**Live demo:** https://YOUR-SERVICE-NAME.onrender.com
 
 > The free hosting plan puts the site to sleep when nobody has visited for a while, so the first page load can take up to a minute.
 
@@ -23,13 +23,14 @@ names, then delete this comment's opening and closing markers to show them.
 
 ### For the public and students
 - **Homepage** with a catalogue search, quick-access tiles, featured books, library news, opening hours and contact details.
-- **Catalogue search** by title, author or ISBN, showing how many copies are available right now.
+- **One search for everything:** a single search covers books and E-Resources together (title, author, ISBN, description), with tabs to narrow it to Books, E-Books, Journals or Staff Publications. Books show how many copies are available right now.
+- **Helpful "not found" page:** if nothing matches, the page says so, names the search, points to other tabs that do have matches, and suggests next steps along with the library's contact details.
 - **E-Resources:** browse and search E-Books, Journals and Staff Publications. Each opens as a file or an external link.
-- **Student check-in page:** a student types their Student ID or name and is logged in as present, with name suggestions as they type.
+- **Check-in page:** a pop-up asks who is checking in. Students type their Student ID or name. Staff and community members give their name and the purpose of their visit.
 - **My Student Account:** a student enters their Student ID to see what they've borrowed, what is due soon, what is overdue, and their full borrowing history.
 
 ### For the librarian
-- **Dashboard:** today's check-ins, active loans, overdue count and book availability at a glance.
+- **Dashboard:** everyone checked in today (students, staff and visitors, with their purpose), active loans, overdue count, book availability and E-Resources figures at a glance.
 - **Books:** add books with date, title, author/editor, year, ISBN, accession number, number of copies, whether purchased or donated, and remarks. Search the catalogue, feature books on the homepage, and delete safely: removed books go to a *Deleted Books* list and can be restored.
 - **Loans:**
   - Type a student's name and their level and Student ID fill in automatically.
@@ -38,26 +39,31 @@ names, then delete this comment's opening and closing markers to show them.
   - Renew for 2 weeks or 30 days, and record remarks when a book comes back.
 - **Students:** register one at a time or import a whole year group from a CSV file. A *New Academic Year* button moves every student up a level (up to 400).
 - **Reports:** totals, most borrowed books, busiest check-in days, and a CSV export of every loan.
-- **Site content:** post library news and edit the opening hours and contact details shown on the homepage.
-- **E-Resources:** add items by uploading a file or pasting a link, and review staff submissions before they go public.
-- **Staff accounts:** create staff logins, reset their passwords, and remove them.
+- **Site content:** post library news with an optional "show until" date. After that date it leaves the homepage but stays in the dashboard, where it can be extended or deleted. Also edit the opening hours and contact details shown on the homepage.
+- **E-Resources:** add items with title, author, publisher, year and type, by uploading a file or pasting a link, and review teaching staff submissions before they go public.
+- **Accounts:** create logins for other librarians and for teaching staff, reset their passwords, and remove them.
 
-### For staff (lecturers)
+### For other librarians
+- Use the dashboard, books and loans, and the public site.
+- Cannot open reports, E-Resources management or staff accounts. They can change their own password from My Account.
+
+### For teaching staff
 - Log in to a page of their own and submit an E-Book, Journal or Staff Publication as a file or a link.
 - Submissions stay **hidden until the librarian approves them**. Staff can see each one's status and remove their own.
 - Staff can change their own password and cannot open any librarian page.
 
 ## Who can do what
 
-| | Public | Student | Staff | Librarian |
-|---|:--:|:--:|:--:|:--:|
-| Search catalogue and browse approved E-Resources | ✅ | ✅ | ✅ | ✅ |
-| Check in at the library | ✅ | ✅ | | |
-| See own borrowed books and history | | ✅ | | |
-| Submit resources (pending approval) | | | ✅ | |
-| Approve, add and delete resources | | | | ✅ |
-| Manage books, loans, students, reports, news, settings | | | | ✅ |
-| Create staff accounts and reset their passwords | | | | ✅ |
+| | Public | Student | Teaching staff | Other librarian | Librarian |
+|---|:--:|:--:|:--:|:--:|:--:|
+| Search catalogue and browse approved E-Resources | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Check in at the library (students, staff, community members) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| See own borrowed books and history | | ✅ | | | |
+| Submit E-Resources (pending approval) | | | ✅ | | |
+| Dashboard, books, loans, students, news, settings | | | | ✅ | ✅ |
+| Reports and loan export | | | | | ✅ |
+| Approve, add and delete E-Resources | | | | | ✅ |
+| Create accounts and reset passwords | | | | | ✅ |
 
 ## Built with
 

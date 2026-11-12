@@ -16,23 +16,30 @@
 
     <div class="dashboard-header">
         <h1>Catalogue</h1>
+        <p>Search the library's books and E-Resources together.</p>
     </div>
 
     <div class="task-box">
         <form method="GET" action="{{ url_for('catalogue') }}">
-            <input type="text" name="search" placeholder="Search books, authors, ISBN..." value="{{ search }}">
+            <input type="text" name="search" placeholder="Search by title, author, ISBN..." value="{{ search }}">
             <input type="hidden" name="type" value="{{ resource_type }}">
             <button type="submit">Search</button>
         </form>
         <div class="hero-tabs" style="margin-top:12px;">
-            <a href="{{ url_for('catalogue') }}?type=all&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'all' }}">All</a>
-            <a href="{{ url_for('catalogue') }}?type=books&search={{ search }}" class="tab-link {{ 'active' if resource_type == 'books' }}">Books</a>
-            <a href="{{ url_for('resources') }}?type=E-Book" class="tab-link">E-books</a>
-            <a href="{{ url_for('resources') }}?type=Journal" class="tab-link">Journals</a>
+            {% set tabs = [('all', 'All'), ('books', 'Books'), ('E-Book', 'E-Books'), ('Journal', 'Journals'), ('Staff Publication', 'Staff Publications')] %}
+            {% for value, label in tabs %}
+            <a href="{{ url_for('catalogue', type=value, search=search) }}" class="tab-link {{ 'active' if resource_type == value }}">{{ label }}</a>
+            {% endfor %}
         </div>
     </div>
 
+    {% if search and (books_found or resources_found) %}
+    <p class="result-summary">{{ books_found|length + resources_found|length }} result{{ '' if (books_found|length + resources_found|length) == 1 else 's' }} for &ldquo;{{ search }}&rdquo;</p>
+    {% endif %}
+
+    {% if books_found %}
     <div class="task-box">
+        <h2><i data-lucide="library" class="section-icon"></i>Books ({{ books_found|length }})</h2>
         <div class="table-responsive">
         <table>
             <tr>
@@ -41,7 +48,7 @@
                 <th>Year</th>
                 <th>Available</th>
             </tr>
-            {% for book in results %}
+            {% for book in books_found %}
             <tr>
                 <td>{{ book.title }}</td>
                 <td>{{ book.author }}</td>
@@ -54,12 +61,78 @@
                     {% endif %}
                 </td>
             </tr>
-            {% else %}
-            <tr><td colspan="4"><div class="empty-state"><i data-lucide="search-x"></i>No results found.</div></td></tr>
             {% endfor %}
         </table>
         </div>
     </div>
+    {% endif %}
+
+    {% if resources_found %}
+    <div class="task-box">
+        <h2><i data-lucide="folder-open" class="section-icon"></i>E-Resources ({{ resources_found|length }})</h2>
+        {% for item in resources_found %}
+        <div class="resource-item">
+            <div class="resource-icon"><i data-lucide="{{ 'book-open' if item.resource_type == 'E-Book' else 'newspaper' if item.resource_type == 'Journal' else 'graduation-cap' }}"></i></div>
+            <div class="resource-info">
+                <p class="resource-title">{{ item.title }}</p>
+                <p class="resource-meta">{{ item.author }}{% if item.publisher %} &middot; {{ item.publisher }}{% endif %}{% if item.year %} &middot; {{ item.year }}{% endif %} &middot; {{ item.resource_type }}</p>
+                {% if item.description %}<p class="resource-desc">{{ item.description }}</p>{% endif %}
+            </div>
+            <div>
+                {% if item.access_type == "file" %}
+                <a href="{{ url_for('resource_file', id=item.id) }}" target="_blank" class="secondary-button icon-btn"><i data-lucide="download"></i>View File</a>
+                {% else %}
+                <a href="{{ item.external_url }}" target="_blank" rel="noopener" class="secondary-button icon-btn"><i data-lucide="external-link"></i>Open Link</a>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not books_found and not resources_found %}
+    <div class="task-box not-found">
+        <i data-lucide="search-x" class="not-found-icon"></i>
+
+        {% if search %}
+        <h2>Nothing found for &ldquo;{{ search }}&rdquo;</h2>
+        <p class="hint">
+            {% if resource_type == 'all' %}We couldn't find a match in our books or E-Resources.
+            {% elif resource_type == 'books' %}We couldn't find a match in our books.
+            {% else %}We couldn't find a match in our {{ resource_type }}s.{% endif %}
+        </p>
+
+        {% if other_matches %}
+        <p><strong>Your search does have matches here:</strong></p>
+        <p class="match-links">
+            {% for label, kind, count in other_matches %}
+            <a href="{{ url_for('catalogue', type=kind, search=search) }}" class="tab-link">{{ label }} ({{ count }})</a>
+            {% endfor %}
+        </p>
+        {% endif %}
+
+        <p><strong>Things you can try:</strong></p>
+        <ul class="tips">
+            <li>Check the spelling, or search with just one word, such as the author's surname.</li>
+            <li>Try part of the title, or the ISBN if you have it.</li>
+            {% if resource_type != 'all' %}<li>Choose the <a href="{{ url_for('catalogue', type='all', search=search) }}">All</a> tab to search everything at once.</li>{% endif %}
+            <li>Ask the librarian. They may be able to find it, or consider adding it to the library.</li>
+        </ul>
+
+        {% if settings.contact_email or settings.contact_phone %}
+        <p class="hint">
+            Contact the library:
+            {% if settings.contact_email %}{{ settings.contact_email }}{% endif %}{% if settings.contact_email and settings.contact_phone %} &middot; {% endif %}{% if settings.contact_phone %}{{ settings.contact_phone }}{% endif %}
+            &middot; <a href="{{ url_for('home') }}#hours">Opening hours</a>
+        </p>
+        {% endif %}
+
+        {% else %}
+        <h2>Nothing here yet</h2>
+        <p class="hint">Nothing has been added to this section of the catalogue yet. Please check back soon.</p>
+        {% endif %}
+    </div>
+    {% endif %}
 
 </div>
 

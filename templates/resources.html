@@ -38,7 +38,7 @@
             <div class="resource-icon"><i data-lucide="{{ 'book-open' if item.resource_type == 'E-Book' else 'newspaper' if item.resource_type == 'Journal' else 'graduation-cap' }}"></i></div>
             <div class="resource-info">
                 <p class="resource-title">{{ item.title }}</p>
-                <p class="resource-meta">{{ item.author }}{% if item.year %} &middot; {{ item.year }}{% endif %} &middot; {{ item.resource_type }}</p>
+                <p class="resource-meta">{{ item.author }}{% if item.publisher %} &middot; {{ item.publisher }}{% endif %}{% if item.year %} &middot; {{ item.year }}{% endif %} &middot; {{ item.resource_type }}</p>
                 {% if item.description %}<p class="resource-desc">{{ item.description }}</p>{% endif %}
             </div>
             <div>
@@ -50,7 +50,7 @@
             </div>
         </div>
         {% else %}
-        <div class="empty-state"><i data-lucide="folder-open"></i>No resources found.</div>
+        <div class="empty-state"><i data-lucide="folder-open"></i>{% if search %}No resources match &ldquo;{{ search }}&rdquo;. <a href="{{ url_for('catalogue', search=search) }}">Search books and E-Resources together</a>.{% else %}Nothing has been added to this section yet.{% endif %}</div>
         {% endfor %}
     </div>
 

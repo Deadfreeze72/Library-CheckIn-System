@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}My Account{% endblock %}
+
+{% block content %}
+
+<div class="dashboard-header">
+    <h1>My Account</h1>
+    <p>{{ current_user.name }} &middot; {{ current_user.email }} &middot; {{ role_label }}</p>
+</div>
+
+<div class="task-box">
+    <h2><i data-lucide="key-round" class="section-icon"></i>Change Password</h2>
+    <p class="hint">If the librarian gave you a temporary password, please change it here.</p>
+
+    <form method="POST" action="{{ url_for('change_password') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <label>Current Password</label>
+        <input type="password" name="current_password" autocomplete="current-password" required>
+
+        <label>New Password (at least 8 characters)</label>
+        <input type="password" name="new_password" autocomplete="new-password" required>
+
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" autocomplete="new-password" required>
+
+        <button type="submit">Update Password</button>
+    </form>
+</div>
+
+{% endblock %}

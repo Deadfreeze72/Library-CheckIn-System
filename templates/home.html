@@ -17,16 +17,17 @@
     <div class="hero">
         <img class="logo-img" src="{{ url_for('static', filename='images/crest.png') }}" alt="St. John Bosco College of Education crest">
         <p class="hero-eyebrow">St. John Bosco College of Education Library</p>
-        <h1>Find a Book or Resource</h1>
+        <h1>Find a Book or E-Resource</h1>
         <form method="GET" action="{{ url_for('catalogue') }}" class="hero-search">
-            <input type="text" name="search" placeholder="Search books, authors, ISBN...">
+            <input type="text" name="search" placeholder="Search books, journals, authors, ISBN...">
             <button type="submit"><i data-lucide="search"></i></button>
         </form>
         <div class="hero-tabs">
-            <a href="{{ url_for('catalogue') }}?type=all" class="tab-link">All</a>
-            <a href="{{ url_for('catalogue') }}?type=books" class="tab-link">Books</a>
-            <a href="{{ url_for('resources') }}?type=E-Book" class="tab-link">E-books</a>
-            <a href="{{ url_for('resources') }}?type=Journal" class="tab-link">Journals</a>
+            <a href="{{ url_for('catalogue', type='all') }}" class="tab-link">All</a>
+            <a href="{{ url_for('catalogue', type='books') }}" class="tab-link">Books</a>
+            <a href="{{ url_for('catalogue', type='E-Book') }}" class="tab-link">E-books</a>
+            <a href="{{ url_for('catalogue', type='Journal') }}" class="tab-link">Journals</a>
+            <a href="{{ url_for('catalogue', type='Staff Publication') }}" class="tab-link">Staff Publications</a>
         </div>
     </div>
 

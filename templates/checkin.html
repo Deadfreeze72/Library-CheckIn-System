@@ -28,26 +28,64 @@
         </div>
 
         <h1>Welcome</h1>
-        <p class="hint">Enter your Student ID or full name to check in.</p>
+        <p class="hint">Students, staff and visitors are all welcome. Please check in when you arrive.</p>
 
-        <form method="POST" action="{{ url_for('checkin') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="button" id="open-checkin">Check In</button>
 
-            <input type="text" name="identifier" placeholder="Student ID or Name" list="kiosk-suggestions" autocomplete="off" autofocus required>
+        <p class="hint" style="margin-top:16px;"><a href="{{ url_for('portal_login') }}">View my borrowed books &rarr;</a></p>
+    </div>
+
+</div>
+
+<dialog id="checkin-dialog" class="checkin-dialog" data-open="{{ 'true' if reopen else 'false' }}">
+    <form method="POST" action="{{ url_for('checkin') }}" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <h2>Who is checking in?</h2>
+
+        <div class="type-choice">
+            {% for value in ['Student', 'Staff', 'Community member'] %}
+            <label class="type-option">
+                <input type="radio" name="visitor_type" value="{{ value }}" {{ 'checked' if form_type == value }}>
+                <span>{{ value }}</span>
+            </label>
+            {% endfor %}
+        </div>
+
+        <div id="student-fields">
+            <label>Student ID or name</label>
+            <input type="text" name="identifier" value="{{ form_identifier }}" list="kiosk-suggestions" placeholder="Your student ID or full name">
             <datalist id="kiosk-suggestions">
                 {% for s in students %}
                 <option value="{{ s.name }}"></option>
                 <option value="{{ s.student_id }}"></option>
                 {% endfor %}
             </datalist>
+        </div>
 
+        <div id="visitor-fields" hidden>
+            <label>Your name</label>
+            <input type="text" name="visitor_name" value="{{ form_name }}" maxlength="120" placeholder="Your full name">
+
+            <label>Purpose of your visit</label>
+            <input type="text" name="purpose" value="{{ form_purpose }}" list="visit-purposes" maxlength="250" placeholder="e.g. Research or reading">
+            <datalist id="visit-purposes">
+                <option value="Reading"></option>
+                <option value="Research"></option>
+                <option value="Borrowing or returning a book"></option>
+                <option value="Using the computers"></option>
+                <option value="Meeting"></option>
+            </datalist>
+        </div>
+
+        <div class="dialog-actions">
+            <button type="button" class="secondary-button" id="cancel-checkin">Cancel</button>
             <button type="submit">Check In</button>
-        </form>
+        </div>
+    </form>
+</dialog>
 
-        <p class="hint" style="margin-top:16px;"><a href="{{ url_for('portal_login') }}">View my borrowed books &rarr;</a></p>
-    </div>
-
-</div>
+<script src="{{ url_for('static', filename='checkin.js') }}"></script>
 
 </body>
 </html>
